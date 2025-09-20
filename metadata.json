@@ -1,0 +1,5 @@
+{
+  "name": "Glyph: The Git Command Constructor",
+  "description": "A web application that transforms writing Git commands into a clear, tangible, and visually guided experience. Users visually assemble commands piece by piece, gaining confidence and understanding with every click.",
+  "requestFramePermissions": []
+}

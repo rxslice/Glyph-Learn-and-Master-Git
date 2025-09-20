@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-g" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Glyph: The Git Command Constructor</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,400;0,700;1,400&family=Lora:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+    <style>
+      :root {
+        --panel-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.07), 0 2px 4px -2px rgb(0 0 0 / 0.07);
+        --panel-radius: 0.75rem; /* 12px */
+      }
+      body {
+        /* Subtle gradient for a less flat look */
+        background-color: #F8F9FA;
+        background-image: linear-gradient(180deg, #FDFDFD 0%, #F8F9FA 100%);
+        /* Subtle noise texture for a paper-like feel */
+        background-image: url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADIAAAAyCAMAAAAp4XiDAAAAUVBMVEWFhYWDg4N3d3dtbW17e3t1dXVpaWl9fX18fHyAgICJiYmUlJSKioqBgYGCgoKTk5N4eHjIyMiHh4eBgYGCgoKYmJiaGho/Pz/Dw8Nvb29jY2NtbW1+fn5oaGghN2xVAAAACXRSTlMAAAAAACLrx1YF2z0/uQAAABhJREFUeNpjYGBkYmRgYgABYEDKAlQAVBABQB4AAQAAAACYAAAA0f/kAAAAAElFTSuQmCC');
+      }
+
+      /* Base toggle styles */
+      .toggle-label {
+        transition: background-color 0.2s ease-in-out;
+      }
+      .toggle-checkbox {
+        transition: right 0.2s ease-in-out, border-color 0.2s ease-in-out;
+      }
+      .toggle-checkbox:checked {
+        right: 0;
+        border-color: #B58900;
+      }
+      .toggle-checkbox:checked + .toggle-label {
+        background-color: #B58900;
+      }
+      
+      /* Animation keyframes */
+      @keyframes pop-in {
+        0% { transform: scale(0.8); opacity: 0; }
+        70% { transform: scale(1.05); opacity: 1; }
+        100% { transform: scale(1); opacity: 1; }
+      }
+      .animate-pop-in {
+        animation: pop-in 0.3s ease-out forwards;
+      }
+      
+      @keyframes fade-in-slide-up {
+        from {
+          opacity: 0;
+          transform: translateY(10px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+      .animate-fade-in-slide-up {
+        animation: fade-in-slide-up 0.3s ease-out forwards;
+      }
+
+      /* Custom Scrollbar Styles */
+      ::-webkit-scrollbar {
+        width: 10px;
+        height: 10px;
+      }
+      ::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      ::-webkit-scrollbar-thumb {
+        background-color: #1F293720;
+        border-radius: 10px;
+        border: 2px solid transparent;
+        background-clip: content-box;
+      }
+      ::-webkit-scrollbar-thumb:hover {
+        background-color: #1F293740;
+      }
+
+    </style>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              'paper-white': '#FFFFFF',
+              'paper-off-white': '#F9FAFB',
+              'deep-charcoal': '#1F2937',
+              'stone-gray': '#6B7280',
+              'burnt-gold': '#B58900',
+              'olive-green': '#859900',
+            },
+            fontFamily: {
+              'serif': ['Lora', 'serif'],
+              'mono': ['"JetBrains Mono"', 'monospace'],
+            },
+            boxShadow: {
+              'panel': 'var(--panel-shadow)',
+            },
+            borderRadius: {
+              'panel': 'var(--panel-radius)',
+            }
+          },
+        },
+      }
+    </script>
+  <script type="importmap">
+{
+  "imports": {
+    "react/": "https://aistudiocdn.com/react@^19.1.1/",
+    "react": "https://aistudiocdn.com/react@^19.1.1",
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.1.1/"
+  }
+}
+</script>
+</head>
+  <body class="font-serif text-deep-charcoal">
+    <div id="root"></div>
+  </body>
+</html>
