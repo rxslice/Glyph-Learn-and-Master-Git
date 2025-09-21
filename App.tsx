@@ -1,5 +1,3 @@
-
-
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import type { ConstructedGlyph, GitOption, GitVerb, RebaseCommit, Commit, BlameLine, RepoFile, DiffLine, Hunk, ReflogEntry, GrepResult, BisectStatus, Worktree, Remote, Stash } from './types';
 import { GIT_COMMANDS } from './data/gitCommands';
@@ -574,7 +572,7 @@ const TagView: React.FC<{ tags: Record<string, string>; commits: Commit[], onCre
                         <div key={name} className="group flex items-center justify-between p-2 rounded-md bg-deep-charcoal/5 font-mono text-sm">
                              <div>
                                 <span className="font-bold text-burnt-gold">{name}</span>
-                                <span className="text-stone-gray ml-4">points to {commits.find(c=>c.id === commitId)?.hash || 'N/A'}</span>
+                                <span className="text-stone-gray ml-4">points to {commits.find(c=>c.id === commitId)?.hash.substring(0,7) || 'N/A'}</span>
                             </div>
                             <button onClick={() => onDelete(name)} className="text-xs text-red-600 hover:underline opacity-0 group-hover:opacity-100 transition-opacity">Delete</button>
                         </div>
@@ -696,16 +694,14 @@ export default function App() {
         head: INITIAL_HEAD,
         repoFiles: INITIAL_REPO_STATE,
         stashes: [],
+        remotes: [{name: 'origin', url: 'git@github.com:user/glyph.git'}],
     }
   });
-  const { commits, branches, tags, head, repoFiles, stashes } = repoState;
+  const { commits, branches, tags, head, repoFiles, stashes, remotes } = repoState;
   
-  const setCommits = (updater: (c: Commit[]) => Commit[]) => setRepoState(s => ({ ...s, commits: updater(s.commits) }));
-  const setBranches = (updater: (b: Record<string, string>) => Record<string, string>) => setRepoState(s => ({ ...s, branches: updater(s.branches) }));
-  const setTags = (updater: (t: Record<string, string>) => Record<string, string>) => setRepoState(s => ({ ...s, tags: updater(s.tags) }));
-  const setHead = (updater: (h: string) => string) => setRepoState(s => ({ ...s, head: updater(s.head) }));
-  const setRepoFiles = (updater: (f: RepoFile[]) => RepoFile[]) => setRepoState(s => ({ ...s, repoFiles: updater(s.repoFiles) }));
-  const setStashes = (updater: (s: Stash[]) => Stash[]) => setRepoState(s => ({ ...s, stashes: updater(s.stashes) }));
+  const setRepoStatePartial = (updater: (prevState: typeof repoState) => Partial<typeof repoState>) => {
+    setRepoState(prev => ({ ...prev, ...updater(prev) }));
+  };
 
   const [diffingFile, setDiffingFile] = useState<RepoFile | null>(null);
   const [authorFilter, setAuthorFilter] = useState('');
@@ -716,7 +712,6 @@ export default function App() {
   const [hoveredOption, setHoveredOption] = useState<GitOption | null>(null);
   const [describeResult, setDescribeResult] = useState<string | null>(null);
   const [bisectStatus, setBisectStatus] = useState<BisectStatus>({ state: 'INACTIVE', goodCommits: [], badCommits: [] });
-  const [remotes, setRemotes] = useState<Remote[]>([{name: 'origin', url: 'git@github.com:user/glyph.git'}]);
   const [worktrees, setWorktrees] = useState<Worktree[]>([
     { path: './', head: 'c2e8a4a', branch: 'develop', isMain: true },
     { path: '../glyph-docs', head: 'f6d8b3c', branch: 'feat/new-feature' }
@@ -927,7 +922,7 @@ export default function App() {
 
     const handleCreateBranch = useCallback((name: string, startPoint?: string) => {
         const startCommit = startPoint ? (commits.find(c => c.hash.startsWith(startPoint))?.id || (branches[startPoint] || head)) : head;
-        setBranches(prev => ({ ...prev, [name]: startCommit }));
+        setRepoStatePartial(prev => ({ branches: { ...prev.branches, [name]: startCommit } }));
         addNotification(`Branch '${name}' created.`);
     }, [branches, head, commits, addNotification]);
   
@@ -939,28 +934,28 @@ export default function App() {
 
     const handleSwitchBranch = useCallback((branchName: string) => {
         if (branches[branchName]) {
-            setHead(() => branches[branchName]);
+            setRepoStatePartial(() => ({ head: branches[branchName] }));
             addNotification(`Switched to branch '${branchName}'.`);
         }
     }, [branches, addNotification]);
 
     const handleDeleteBranch = useCallback((branchName: string) => {
-        setBranches(prev => {
-            const newBranches = {...prev};
+        setRepoStatePartial(prev => {
+            const newBranches = {...prev.branches};
             delete newBranches[branchName];
-            return newBranches;
+            return { branches: newBranches };
         });
         addNotification(`Branch '${branchName}' deleted.`);
     }, [addNotification]);
 
     const handleRenameBranch = useCallback((oldName: string, newName: string) => {
-        setBranches(prev => {
-            const newBranches = {...prev};
+        setRepoStatePartial(prev => {
+            const newBranches = {...prev.branches};
             if (newBranches[oldName]) {
                 newBranches[newName] = newBranches[oldName];
                 delete newBranches[oldName];
             }
-            return newBranches;
+            return { branches: newBranches };
         });
         addNotification(`Branch '${oldName}' renamed to '${newName}'.`);
     }, [addNotification]);
@@ -972,33 +967,33 @@ export default function App() {
     }, [addNotification]);
 
     const handleStageFile = useCallback((path: string) => {
-        setRepoFiles(prev => prev.map(f => f.path === path ? { ...f, status: 'staged', hunks: f.hunks?.map(h => ({ ...h, isStaged: true })) } : f));
+        setRepoStatePartial(prev => ({ repoFiles: prev.repoFiles.map(f => f.path === path ? { ...f, status: 'staged', hunks: f.hunks?.map(h => ({ ...h, isStaged: true })) } : f) }));
         addNotification(`Staged '${path}'.`);
     }, [addNotification]);
     
     const handleStageAll = useCallback(() => {
-        setRepoFiles(prev => prev.map(f => {
+        setRepoStatePartial(prev => ({ repoFiles: prev.repoFiles.map(f => {
             if (f.status === 'modified' || f.status === 'partially-staged' || f.status === 'untracked') {
                 return { ...f, status: 'staged', hunks: f.hunks?.map(h => ({ ...h, isStaged: true })) };
             }
             return f;
-        }));
+        })}));
         addNotification(`Staged all changes.`);
     }, [addNotification]);
 
     const handleUnstageFile = useCallback((path: string) => {
-        setRepoFiles(prev => prev.map(f => {
+        setRepoStatePartial(prev => ({ repoFiles: prev.repoFiles.map(f => {
             if (f.path === path) {
                 const newStatus = f.type === 'new' ? 'untracked' : 'modified';
                 return { ...f, status: newStatus, hunks: f.hunks?.map(h => ({ ...h, isStaged: false })) };
             }
             return f;
-        }));
+        })}));
         addNotification(`Unstaged '${path}'.`);
     }, [addNotification]);
 
     const handleToggleHunk = useCallback((filePath: string, hunkId: string) => {
-        setRepoFiles(prev => prev.map(file => {
+        setRepoStatePartial(prev => ({ repoFiles: prev.repoFiles.map(file => {
             if (file.path === filePath && file.hunks) {
                 const newHunks = file.hunks.map(hunk => hunk.id === hunkId ? { ...hunk, isStaged: !hunk.isStaged } : hunk);
                 const stagedCount = newHunks.filter(h => h.isStaged).length;
@@ -1008,11 +1003,11 @@ export default function App() {
                 return { ...file, hunks: newHunks, status: newStatus };
             }
             return file;
-        }));
+        })}));
     }, []);
 
     const handleDiscardChanges = useCallback((path: string) => {
-        setRepoFiles(prev => prev.filter(f => f.path !== path || f.status === 'staged'));
+        setRepoStatePartial(prev => ({ repoFiles: prev.repoFiles.filter(f => f.path !== path || f.status === 'staged') }));
         addNotification(`Discarded changes in '${path}'.`);
     }, [addNotification]);
     
@@ -1032,10 +1027,13 @@ export default function App() {
             row: -1, col: commits.find(c => c.id === head)?.col || 0,
         };
         const updatedCommits = [newCommit, ...commits].map((c, index) => ({...c, row: index}));
-        setCommits(() => updatedCommits);
-        setBranches(prev => ({...prev, [currentBranchName]: newCommit.id}));
-        setHead(() => newCommit.id);
-        setRepoFiles(prev => prev.filter(f => f.status !== 'staged'));
+        setRepoState(s => ({
+            ...s,
+            commits: updatedCommits,
+            branches: { ...s.branches, [currentBranchName]: newCommit.id },
+            head: newCommit.id,
+            repoFiles: s.repoFiles.filter(f => f.status !== 'staged')
+        }));
         addNotification(`Commit ${newCommit.hash} created.`);
         setActiveView('log');
     }, [commits, head, currentBranchName, addNotification]);
@@ -1056,9 +1054,13 @@ export default function App() {
                     author: 'Alice', date: new Date().toISOString(), row: -1,
                     col: commits.find(c => c.id === head)?.col || 0,
                 };
-                setCommits(prev => [newCommit, ...prev].map((c, i) => ({...c, row: i})));
-                setBranches(prev => ({...prev, [currentBranchName]: newCommit.id}));
-                setHead(() => newCommit.id);
+                const updatedCommits = [newCommit, ...commits].map((c, i) => ({...c, row: i}));
+                setRepoState(s => ({
+                    ...s,
+                    commits: updatedCommits,
+                    branches: { ...s.branches, [currentBranchName]: newCommit.id },
+                    head: newCommit.id
+                }));
                 addNotification(`Merged branch '${branchToMerge}'.`);
                 handleClearCommand();
                 setActiveView('log');
@@ -1075,9 +1077,13 @@ export default function App() {
                     author: 'Alice', date: new Date().toISOString(), row: -1,
                     col: commits.find(c => c.id === head)?.col || 0,
                 };
-                setCommits(prev => [newCommit, ...prev].map((c, i) => ({...c, row: i})));
-                setBranches(prev => ({...prev, [currentBranchName]: newCommit.id}));
-                setHead(() => newCommit.id);
+                const updatedCommits = [newCommit, ...commits].map((c, i) => ({...c, row: i}));
+                setRepoState(s => ({
+                    ...s,
+                    commits: updatedCommits,
+                    branches: { ...s.branches, [currentBranchName]: newCommit.id },
+                    head: newCommit.id
+                }));
                 addNotification(`Cherry-picked ${commitToPick.hash}.`);
                 handleClearCommand();
             }
@@ -1085,8 +1091,11 @@ export default function App() {
             const commitRef = command.find(g => g.optionId === 'commit-ref')?.value;
             const targetCommit = commits.find(c => c.hash.startsWith(commitRef?.replace('HEAD~', '') || '')); // Simplified logic
             if (targetCommit && currentBranchName !== 'detached HEAD') {
-                 setBranches(prev => ({...prev, [currentBranchName]: targetCommit.id}));
-                 setHead(() => targetCommit.id);
+                 setRepoState(s => ({
+                    ...s,
+                    branches: { ...s.branches, [currentBranchName]: targetCommit.id },
+                    head: targetCommit.id
+                }));
                  addNotification(`Reset to ${targetCommit.hash}.`);
                  handleClearCommand();
             }
@@ -1102,9 +1111,13 @@ export default function App() {
                     author: 'Alice', date: new Date().toISOString(), row: -1,
                     col: commits.find(c => c.id === head)?.col || 0,
                 };
-                setCommits(prev => [newCommit, ...prev].map((c, i) => ({...c, row: i})));
-                setBranches(prev => ({...prev, [currentBranchName]: newCommit.id}));
-                setHead(() => newCommit.id);
+                const updatedCommits = [newCommit, ...commits].map((c, i) => ({...c, row: i}));
+                setRepoState(s => ({
+                    ...s,
+                    commits: updatedCommits,
+                    branches: { ...s.branches, [currentBranchName]: newCommit.id },
+                    head: newCommit.id
+                }));
                 addNotification(`Reverted commit ${commitToRevert.hash}.`);
                 handleClearCommand();
             }
@@ -1123,26 +1136,58 @@ export default function App() {
             files: filesToStash,
             createdAt: new Date().toISOString(),
         };
-        setStashes(prev => [newStash, ...prev]);
-        setRepoFiles(prev => prev.filter(f => f.status === 'staged'));
+        setRepoStatePartial(prev => ({
+            stashes: [newStash, ...prev.stashes],
+            repoFiles: prev.repoFiles.filter(f => f.status === 'staged')
+        }));
         addNotification("Saved working directory and index state.");
     }, [repoFiles, currentBranchName, addNotification]);
 
     const handleStashApply = useCallback((id: string) => {
         const stash = stashes.find(s => s.id === id);
         if (!stash) return;
-        setRepoFiles(prev => [...prev, ...stash.files]);
+        // simplistic apply: just add files back. a real implementation would handle conflicts.
+        setRepoStatePartial(prev => ({ repoFiles: [...prev.repoFiles, ...stash.files] }));
         addNotification(`Applied stash '${stash.message}'.`);
     }, [stashes, addNotification]);
 
     const handleStashPop = useCallback((id: string) => {
         handleStashApply(id);
-        setStashes(prev => prev.filter(s => s.id !== id));
+        setRepoStatePartial(prev => ({ stashes: prev.stashes.filter(s => s.id !== id) }));
     }, [handleStashApply]);
 
     const handleStashDrop = useCallback((id: string) => {
-        setStashes(prev => prev.filter(s => s.id !== id));
+        setRepoStatePartial(prev => ({ stashes: prev.stashes.filter(s => s.id !== id) }));
         addNotification("Stash dropped.");
+    }, [addNotification]);
+
+    const handleCreateTag = useCallback((name: string, commitRef: string) => {
+        const targetCommit = commits.find(c => c.hash.startsWith(commitRef)) || commits.find(c => c.id === branches[commitRef]) || commits.find(c => c.id === head);
+        if (targetCommit) {
+            setRepoStatePartial(prev => ({ tags: { ...prev.tags, [name]: targetCommit.id } }));
+            addNotification(`Tag '${name}' created at ${targetCommit.hash.substring(0,7)}.`);
+        } else {
+            addNotification(`Error: Could not find commit for '${commitRef}'.`);
+        }
+    }, [commits, branches, head, addNotification]);
+    
+    const handleDeleteTag = useCallback((name: string) => {
+        setRepoStatePartial(prev => {
+            const newTags = { ...prev.tags };
+            delete newTags[name];
+            return { tags: newTags };
+        });
+        addNotification(`Tag '${name}' deleted.`);
+    }, [addNotification]);
+
+    const handleAddRemote = useCallback((name: string, url: string) => {
+        setRepoStatePartial(prev => ({ remotes: [...prev.remotes, { name, url }] }));
+        addNotification(`Remote '${name}' added.`);
+    }, [addNotification]);
+
+    const handleRemoveRemote = useCallback((name: string) => {
+        setRepoStatePartial(prev => ({ remotes: prev.remotes.filter(r => r.name !== name) }));
+        addNotification(`Remote '${name}' removed.`);
     }, [addNotification]);
 
     // --- Memoized Derived State ---
@@ -1186,8 +1231,8 @@ export default function App() {
         if (isBisectView) return <BisectView status={bisectStatus} onGood={() => {}} onBad={() => {}} onReset={() => {}} currentCommit={commits.find(c => c.hash === bisectStatus.current)} />;
         if (isWorktreeView) return <WorktreeView worktrees={worktrees} onAdd={() => {}} onRemove={() => {}} />;
         if (isShowView) return <ShowView commit={commitForShowView} />;
-        if (isTagView) return <TagView tags={tags} commits={commits} onCreate={(name, hash) => setTags(prev => ({...prev, [name]: commits.find(c=>c.hash.startsWith(hash))?.id || ''}))} onDelete={(name) => setTags(prev => { const newTags = {...prev}; delete newTags[name]; return newTags; })} />;
-        if (isRemoteView) return <RemoteView remotes={remotes} onAdd={(name, url) => setRemotes(p => [...p, {name, url}])} onRemove={name => setRemotes(p => p.filter(r => r.name !== name))} />;
+        if (isTagView) return <TagView tags={tags} commits={commits} onCreate={handleCreateTag} onDelete={handleDeleteTag} />;
+        if (isRemoteView) return <RemoteView remotes={remotes} onAdd={handleAddRemote} onRemove={handleRemoveRemote} />;
         if (isStashView) return <StashView stashes={stashes} onApply={handleStashApply} onPop={handleStashPop} onDrop={handleStashDrop} />;
 
         // Fallback for commands without a dedicated view or the dashboard
@@ -1356,10 +1401,10 @@ const RepositoryDashboard: React.FC<{
                     <div className="flex items-center justify-between p-3 bg-deep-charcoal/5 rounded-md">
                         <div>
                              <p className="font-bold">{stagedCount} staged file(s)</p>
-                             <p className="font-bold">{modifiedCount - stagedCount} unstaged & untracked file(s)</p>
+                             <p className="font-bold">{modifiedCount} unstaged & untracked file(s)</p>
                         </div>
                         <div className="flex items-center space-x-2">
-                             {modifiedCount > stagedCount && <button onClick={onStageAll} className="px-4 py-2 text-sm font-bold bg-olive-green/20 text-olive-green rounded-md hover:bg-olive-green/30 transition-colors">Stage All</button>}
+                             {modifiedCount > 0 && <button onClick={onStageAll} className="px-4 py-2 text-sm font-bold bg-olive-green/20 text-olive-green rounded-md hover:bg-olive-green/30 transition-colors">Stage All</button>}
                              <button onClick={onSwitchToStatus} className="px-4 py-2 text-sm font-bold bg-deep-charcoal/10 text-deep-charcoal rounded-md hover:bg-deep-charcoal/20 transition-colors">View Details</button>
                         </div>
                     </div>

@@ -218,9 +218,9 @@ const GrepIcon = ({ className = "w-6 h-6" }: { className?: string }) => (
 
 const BisectIcon = ({ className = "w-6 h-6" }: { className?: string }) => (
     <svg xmlns="http://www.w3.org/2000/svg" className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 14l-4-4m0 0l4-4m-4 4h16" />
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10l4 4m0 0l-4 4m4-4H4" />
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16" />
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 14l-4-4m0 0l4-4m-4 4h16" />
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10l4 4m0 0l-4 4m4-4H4" />
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16" />
     </svg>
 );
 
@@ -234,7 +234,7 @@ const DescribeIcon = ({ className = "w-6 h-6" }: { className?: string }) => (
 
 const WorktreeIcon = ({ className = "w-6 h-6" }: { className?: string }) => (
     <svg xmlns="http://www.w3.org/2000/svg" className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h6m-6 4h6m-6 4h6" />
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h6m-6 4h6m-6 4h6" />
     </svg>
 );
 
@@ -243,433 +243,410 @@ export const GIT_COMMANDS: GitVerb[] = [
   {
     id: 'add',
     name: 'add',
-    // Fix: Directly assign the icon component to ensure correct type inference.
     icon: AddIcon,
     description: "Add file contents to the index.",
     longDescription: "This command updates the index using the current content found in the working tree, to prepare the content staged for the next commit. The 'index' holds a snapshot of the content of the working tree, and it is this snapshot that is taken as the contents of the next commit.",
     options: [
-        // Fix: Explicitly set the type to 'string' literal to prevent incorrect type widening by TypeScript.
         { id: 'pathspec', flag: '', description: "File(s) to add.", longDescription: "The path to the file or directory to add. Using '.' will add all changes in the current directory and subdirectories.", type: 'string' as const, placeholder: ".", requiresValue: true },
-        { id: 'p', flag: '-p', description: "Interactively stage hunks.", longDescription: "Interactively choose hunks of patch between the working tree and the index and add them to the index. This gives you finer control over what gets committed.", type: 'boolean' as const, requiresValue: false },
-        { id: 'u', flag: '-u', description: "Update tracked files.", longDescription: "Update only files that Git already knows about. This will not stage new (untracked) files.", type: 'boolean' as const, requiresValue: false },
-    ]
+        { id: 'p', flag: '-p', description: "Interactively stage hunks.", longDescription: "Interactively choose hunks of patch between the index and the work tree and add them to the index. This gives the user a chance to review the difference before adding modified contents to the index.", type: 'boolean' as const, requiresValue: false },
+        { id: 'u', flag: '-u', description: "Update tracked files.", longDescription: "Update the index just where it already has an entry. This removes as well as modifies index entries to match the working tree, but adds no new files.", type: 'boolean' as const, requiresValue: false },
+        { id: 'A', flag: '-A', description: "Add all changes.", longDescription: "Stages all changes, including new, modified, and deleted files. This is equivalent to running `git add .` and `git add -u`.", type: 'boolean' as const, requiresValue: false },
+    ],
   },
   {
     id: 'archive',
     name: 'archive',
-    // Fix: Directly assign the icon component to ensure correct type inference.
     icon: ArchiveIcon,
-    description: "Create an archive of files from a named tree.",
-    longDescription: "Creates an archive file (e.g., zip, tar) containing the constituent files of a single tree from the repository. The archive is created from a specified commit or branch.",
+    description: 'Create an archive of files from a named tree.',
+    longDescription: 'Creates an archive file of the specified format containing the tree structure for the named tree, and writes it to the standard output. This is useful for creating distributable packages of a specific version of your project.',
     options: [
-        { id: 'tree-ish', flag: '', description: "The tree or commit to archive.", longDescription: "The branch, tag, or commit hash to create the archive from. For example, 'main' or 'v1.2.0'.", type: 'string' as const, placeholder: "main", requiresValue: true },
-        { id: 'format', flag: '--format', description: "Archive format.", longDescription: "Specifies the format of the archive, such as 'zip' or 'tar'. If not specified, it's inferred from the output filename.", type: 'string' as const, placeholder: "zip", requiresValue: true },
-        { id: 'output', flag: '-o', description: "Output file.", longDescription: "Write the archive to the specified file instead of stdout.", type: 'string' as const, placeholder: "project.zip", requiresValue: true },
-        { id: 'prefix', flag: '--prefix', description: "Prepend a path prefix.", longDescription: "Prepend the specified prefix to each file in the archive. For example, 'my-project/'.", type: 'string' as const, placeholder: "project-v1/", requiresValue: true },
-    ]
+        { id: 'format', flag: '--format', description: 'Format of the archive.', longDescription: 'Specify the format of the archive, such as `zip` or `tar`.', type: 'choice' as const, choices: ['zip', 'tar'], requiresValue: true },
+        { id: 'output', flag: '-o', description: 'Output file.', longDescription: 'Write the archive to the specified file instead of standard output.', type: 'string' as const, placeholder: 'file.zip', requiresValue: true },
+        { id: 'prefix', flag: '--prefix', description: 'Prepend a path.', longDescription: 'Prepend a path to every file in the archive.', type: 'string' as const, placeholder: 'project/', requiresValue: true },
+        { id: 'tree-ish', flag: '', description: 'The tree or commit to archive.', longDescription: 'The commit hash, branch name, or tag to create an archive from. Defaults to HEAD.', type: 'string' as const, placeholder: 'HEAD', requiresValue: true },
+    ],
   },
   {
     id: 'bisect',
     name: 'bisect',
     icon: BisectIcon,
-    description: "Use binary search to find the commit that introduced a bug.",
-    longDescription: "Git bisect is a powerful debugging tool that performs a binary search through your commit history to find a specific commit that introduced a regression. You start by telling it a 'bad' commit where the bug exists and a 'good' commit where it doesn't. Git then repeatedly checks out a commit halfway between them and asks you whether the bug exists there.",
+    description: 'Use binary search to find a commit that introduced a bug.',
+    longDescription: '`git bisect` is a powerful debugging tool that finds which commit in your project’s history introduced a bug. You use it by first telling it a "bad" commit that is known to contain the bug, and a "good" commit that is known to be before the bug was introduced. Then `git bisect` picks a commit between those two endpoints and asks you whether the selected commit is "good" or "bad". It continues narrowing down the range until it finds the exact commit that introduced the change.',
     options: [
-        { id: 'start', flag: 'start', description: "Start a bisect session.", longDescription: "Starts the bisect process. You must provide a 'bad' and 'good' commit reference after this.", type: 'boolean' as const, requiresValue: false },
-        { id: 'bad', flag: 'bad', description: "Mark a commit as bad.", longDescription: "Identifies a commit where the bug or regression is present.", type: 'string' as const, placeholder: "commit-hash", requiresValue: true },
-        { id: 'good', flag: 'good', description: "Mark a commit as good.", longDescription: "Identifies a commit where the bug or regression is not present.", type: 'string' as const, placeholder: "commit-hash", requiresValue: true },
-        { id: 'reset', flag: 'reset', description: "End the bisect session.", longDescription: "Cleans up the bisect state and returns you to your original HEAD.", type: 'boolean' as const, requiresValue: false },
-    ]
+        { id: 'start', flag: 'start', description: 'Start a bisect session.', longDescription: 'Starts the bisecting process. You need to provide a bad and a good commit.', type: 'boolean' as const, requiresValue: false },
+        { id: 'bad', flag: 'bad', description: 'Mark a commit as bad.', longDescription: 'Marks the current or a specified commit as containing the bug.', type: 'string' as const, placeholder: '<commit>', requiresValue: true },
+        { id: 'good', flag: 'good', description: 'Mark a commit as good.', longDescription: 'Marks the current or a specified commit as not containing the bug.', type: 'string' as const, placeholder: '<commit>', requiresValue: true },
+        { id: 'reset', flag: 'reset', description: 'End the bisect session.', longDescription: 'Cleans up the bisect state and returns you to the original HEAD.', type: 'boolean' as const, requiresValue: false },
+    ],
   },
   {
     id: 'blame',
     name: 'blame',
-    // Fix: Directly assign the icon component to ensure correct type inference.
     icon: BlameIcon,
-    description: "Show what revision and author last modified each line of a file.",
-    longDescription: "The 'blame' command annotates each line in the given file with information from the revision which last changed the line. This is used to examine the history of specific lines of a file.",
+    description: 'Show what revision and author last modified each line of a file.',
+    longDescription: 'Annotates each line in the given file with information from the revision which last modified the line. This is useful for tracking down when a particular change was introduced and by whom.',
     options: [
-        { id: 'file', flag: '', description: "The file to annotate.", longDescription: "The path to the file you want to inspect.", type: 'string' as const, placeholder: "path/to/file.js", requiresValue: true },
-        { id: 'L', flag: '-L', description: "Annotate a line range.", longDescription: "Restricts the output to the specified line range. The format is '<start>,<end>' or ':<funcname>'.", type: 'string' as const, placeholder: "10,20", requiresValue: true },
-        { id: 'e', flag: '-e', description: "Show author email.", longDescription: "Shows the author's email address instead of their name in the blame output.", type: 'boolean' as const, requiresValue: false },
-    ]
+      { id: 'file', flag: '', description: "File to blame.", longDescription: "The path to the file you want to inspect.", type: 'string' as const, placeholder: "path/to/file", requiresValue: true },
+      { id: 'L', flag: '-L', description: "Line range.", longDescription: "Restrict the output to the given line range. For example, '-L 10,20' shows blame for lines 10 through 20.", type: 'string' as const, placeholder: "start,end", requiresValue: true },
+      { id: 'e', flag: '-e', description: "Show email.", longDescription: "Show the author's email address instead of the name.", type: 'boolean' as const, requiresValue: false },
+    ],
   },
   {
     id: 'branch',
     name: 'branch',
-    // Fix: Directly assign the icon component to ensure correct type inference.
     icon: BranchIcon,
-    description: "List, create, or delete branches.",
-    longDescription: "Branches are pointers to specific commits. The 'branch' command lets you manage these pointers. They are a core part of Git, allowing for parallel development.",
+    description: 'List, create, or delete branches.',
+    longDescription: 'Branches are lightweight movable pointers to commits. `git branch` lets you manage these pointers. Without arguments, it lists your local branches. You can create a new branch, delete a branch, and list all branches (including remote).',
     options: [
-        { id: 'create-branch-name', flag: '', description: "New branch name.", longDescription: "Providing a name creates a new branch. By default, it's created from the current HEAD commit.", type: 'string' as const, placeholder: "new-feature", requiresValue: true },
-        { id: 'start-point', flag: '', description: "Set start-point for new branch.", longDescription: "Specifies the commit a new branch should be created from. If omitted, it defaults to HEAD.", type: 'string' as const, placeholder: "commit-hash", requiresValue: true },
-        { id: 'd', flag: '-d', description: "Delete a branch.", longDescription: "The '-d' flag deletes the specified branch. It will prevent deletion if the branch has unmerged changes.", type: 'string' as const, placeholder: "branch-to-delete", requiresValue: true },
-        { id: 'D', flag: '-D', description: "Force delete a branch.", longDescription: "The '-D' flag is a shortcut for '--delete --force'. It deletes the branch regardless of its merge status.", type: 'string' as const, placeholder: "branch-to-force-delete", requiresValue: true },
-        { id: 'm-branch', flag: '-m', description: "Rename a branch.", longDescription: "The '-m' flag renames a branch. If you are on the branch you want to rename, you can omit the old branch name.", type: 'string' as const, placeholder: "new-branch-name", requiresValue: true },
-    ]
+      { id: 'd', flag: '-d', description: 'Delete a branch.', longDescription: 'Deletes the specified branch. The branch must be fully merged in its upstream branch.', type: 'string' as const, placeholder: '<branch-name>', requiresValue: true },
+      { id: 'D', flag: '-D', description: 'Force delete a branch.', longDescription: 'Forcibly deletes the specified branch, even if it has unmerged changes.', type: 'string' as const, placeholder: '<branch-name>', requiresValue: true },
+      { id: 'm', flag: '-m', description: 'Move/rename a branch.', longDescription: 'Rename a branch. If a branch with the new name already exists, -M must be used to force the rename.', type: 'string' as const, placeholder: '<new-branch-name>', requiresValue: true },
+      { id: 'a', flag: '-a', description: 'List all branches.', longDescription: 'List both remote-tracking branches and local branches.', type: 'boolean' as const, requiresValue: false },
+    ],
   },
   {
     id: 'checkout',
     name: 'checkout',
     icon: CheckoutIcon,
-    description: "Switch branches or restore working tree files.",
-    longDescription: "A versatile command that switches branches or restores working tree files. It is one of the most frequently used Git commands, allowing you to navigate between different versions of your project and manage your working directory.",
+    description: 'Switch branches or restore working tree files.',
+    longDescription: 'This command has two main functions. It can switch the current HEAD to a different branch, updating the working directory to match. It can also be used to restore files in the working directory from the index or another commit.',
     options: [
-      { id: 'branch', flag: '', description: "Branch to switch to.", longDescription: "The name of an existing branch you want to check out.", type: 'string' as const, placeholder: "branch-name", requiresValue: true },
-      { id: 'b', flag: '-b', description: "Create and switch to a new branch.", longDescription: "Creates a new branch with the given name and then switches to it.", type: 'string' as const, placeholder: "new-branch-name", requiresValue: true },
-      { id: 'start-point', flag: '', description: "Start point for the new branch.", longDescription: "Specifies the commit a new branch should be created from when using -b. If omitted, it defaults to HEAD.", type: 'string' as const, placeholder: "main", requiresValue: true },
-      { id: 'pathspec', flag: '--', description: "File(s) to restore.", longDescription: "Discards changes in the working directory. The '--' is used to separate branch names from file paths.", type: 'string' as const, placeholder: "path/to/file.js", requiresValue: true },
-    ]
+      { id: 'branch', flag: '', description: 'Branch to switch to.', longDescription: 'The name of the branch to check out.', type: 'string' as const, placeholder: '<branch-name>', requiresValue: true },
+      { id: 'b', flag: '-b', description: 'Create and switch.', longDescription: 'Create a new branch and immediately switch to it.', type: 'string' as const, placeholder: '<new-branch-name>', requiresValue: true },
+      { id: 'path', flag: '--', description: 'Restore file(s).', longDescription: 'Restore the specified file or directory in the working tree to its state from the index.', type: 'string' as const, placeholder: '<file-path>', requiresValue: true },
+    ],
   },
   {
     id: 'cherry-pick',
     name: 'cherry-pick',
     icon: CherryPickIcon,
-    description: "Apply the changes from existing commits.",
-    longDescription: "Given one or more existing commits, apply the change that each one introduces, recording a new commit for each. This is useful for picking a specific commit from one branch and applying it to another.",
+    description: 'Apply the changes introduced by some existing commits.',
+    longDescription: 'Given one or more existing commits, apply the change that each one introduces, recording a new commit for each. This is useful for undoing changes on a branch or applying a specific bug fix from another branch without merging the entire branch.',
     options: [
-        { id: 'commit', flag: '', description: "Commit to cherry-pick.", longDescription: "The commit hash to apply to the current branch.", type: 'string' as const, placeholder: "commit-hash", requiresValue: true },
-        { id: 'no-commit', flag: '--no-commit', description: "Apply changes without committing.", longDescription: "Applies the changes to your working directory and staging area, but does not create a new commit.", type: 'boolean' as const, requiresValue: false },
-        { id: 'edit', flag: '-e', description: "Edit the commit message.", longDescription: "Allows you to edit the commit message of the cherry-picked commit before it is applied.", type: 'boolean' as const, requiresValue: false },
-        { id: 'abort', flag: '--abort', description: "Abort the operation.", longDescription: "Cancels the cherry-pick operation and returns your branch to its previous state.", type: 'boolean' as const, requiresValue: false },
-    ]
+        { id: 'commit', flag: '', description: 'Commit to apply.', longDescription: 'The commit hash to apply to the current branch.', type: 'string' as const, placeholder: '<commit-hash>', requiresValue: true },
+        { id: 'n', flag: '-n', description: 'No commit.', longDescription: 'Apply the changes but do not create a new commit. The changes will be staged.', type: 'boolean' as const, requiresValue: false },
+    ],
   },
   {
     id: 'clean',
     name: 'clean',
     icon: CleanIcon,
-    description: "Remove untracked files from the working tree.",
-    longDescription: "Cleans the working tree by recursively removing files that are not under version control, starting from the current directory.",
+    description: 'Remove untracked files from the working tree.',
+    longDescription: 'Cleans the working tree by recursively removing files that are not under version control, starting from the current directory.',
     options: [
-        { id: 'n', flag: '-n', description: "Dry run.", longDescription: "Show what would be done, without actually removing any files.", type: 'boolean' as const, requiresValue: false },
-        { id: 'f', flag: '-f', description: "Force deletion.", longDescription: "Required to actually delete the files. If not specified, git clean will not remove anything.", type: 'boolean' as const, requiresValue: false },
-        { id: 'd', flag: '-d', description: "Remove directories.", longDescription: "Removes untracked directories in addition to untracked files.", type: 'boolean' as const, requiresValue: false },
-    ]
+        { id: 'd', flag: '-d', description: 'Remove directories.', longDescription: 'In addition to untracked files, remove untracked directories.', type: 'boolean' as const, requiresValue: false },
+        { id: 'f', flag: '-f', description: 'Force deletion.', longDescription: 'Required to proceed with the deletion if the git configuration `clean.requireForce` is not set to false.', type: 'boolean' as const, requiresValue: false },
+        { id: 'n', flag: '-n', description: 'Dry run.', longDescription: "Don't actually remove anything, just show what would be done.", type: 'boolean' as const, requiresValue: false },
+        { id: 'x', flag: '-x', description: 'Remove ignored files.', longDescription: "Don't use the standard ignore rules. This will also remove files that are usually ignored by git.", type: 'boolean' as const, requiresValue: false },
+    ],
   },
   {
     id: 'clone',
     name: 'clone',
     icon: CloneIcon,
-    description: "Clone a repository into a new directory.",
-    longDescription: "Clones a repository from a URL into a newly created directory. This is typically the first command you'll use when starting to work on an existing project.",
+    description: 'Clone a repository into a new directory.',
+    longDescription: 'Clones a repository into a newly created directory, creates remote-tracking branches for each branch in the cloned repository, and checks out an initial branch that is forked from the cloned repository\'s currently active branch.',
     options: [
-      { id: 'repository', flag: '', description: "Repository URL.", longDescription: "The URL of the remote repository to clone (e.g., 'https://github.com/user/repo.git').", type: 'string' as const, placeholder: "https://github.com/user/repo.git", requiresValue: true },
-      { id: 'directory', flag: '', description: "Local directory name.", longDescription: "The name of the directory to clone into on your local machine. If omitted, it's derived from the repository name.", type: 'string' as const, placeholder: "my-project", requiresValue: true },
-      { id: 'b', flag: '-b', description: "Checkout specific branch.", longDescription: "Instead of pointing the newly created HEAD to the branch pointed to by the cloned repository's HEAD, point to this branch instead.", type: 'string' as const, placeholder: "branch-name", requiresValue: true },
-      { id: 'depth', flag: '--depth', description: "Create a shallow clone.", longDescription: "Creates a 'shallow' clone with a history truncated to the specified number of commits. This can be much faster for large repositories.", type: 'string' as const, placeholder: "1", requiresValue: true },
-    ]
+        { id: 'repo', flag: '', description: 'Repository URL.', longDescription: 'The URL of the repository to clone (e.g., https://github.com/user/repo.git).', type: 'string' as const, placeholder: '<repository-url>', requiresValue: true },
+        { id: 'directory', flag: '', description: 'Directory name.', longDescription: 'The name of the new directory to clone into. Defaults to the repository name.', type: 'string' as const, placeholder: '<directory>', requiresValue: true },
+        { id: 'b', flag: '-b', description: 'Specific branch.', longDescription: 'Instead of pointing the newly created HEAD to the branch pointed to by the cloned repository\'s HEAD, point to this branch instead.', type: 'string' as const, placeholder: '<branch-name>', requiresValue: true },
+        { id: 'depth', flag: '--depth', description: 'Shallow clone.', longDescription: 'Create a shallow clone with a history truncated to the specified number of commits.', type: 'string' as const, placeholder: '<depth>', requiresValue: true },
+    ],
   },
   {
     id: 'commit',
     name: 'commit',
     icon: CommitIcon,
-    description: "Record changes to the repository.",
+    description: 'Record changes to the repository.',
     longDescription: "The 'commit' command saves your staged changes. It's like creating a snapshot of your repository at a specific point in time. Each commit has a unique ID and a message describing the changes.",
     options: [
       { id: 'amend', flag: '--amend', description: "Amend the previous commit.", longDescription: "The '--amend' flag modifies the most recent commit. You can change its message or add/remove files from it. Use with caution on shared branches.", type: 'boolean' as const, requiresValue: false },
-      { id: 'no-edit', flag: '--no-edit', description: "Use selected commit message without launching an editor.", longDescription: "Used with '--amend', this flag amends a commit without changing its commit message.", type: 'boolean' as const, requiresValue: false },
-      { id: 'a', flag: '-a', description: "Stage all tracked, modified files.", longDescription: "The '-a' flag automatically stages every file that is already tracked by Git and then commits them. It does not stage new (untracked) files.", type: 'boolean' as const, requiresValue: false },
-    ]
+      { id: 'a', flag: '-a', description: "Stage and commit all.", longDescription: "Automatically stage all modified and deleted files (but not new files) before committing.", type: 'boolean' as const, requiresValue: false },
+    ],
   },
   {
     id: 'config',
     name: 'config',
-    // Fix: Directly assign the icon component to ensure correct type inference.
     icon: ConfigIcon,
-    description: "Get and set repository or global options.",
-    longDescription: "Used to query or set configuration options for Git. These can be for a specific repository (local) or for your user account (global). Common settings include user name and email.",
+    description: 'Get and set repository or global options.',
+    longDescription: 'You can query/set/replace/unset configuration options with this command. The name is a dot-separated key (e.g., `user.name`). The configuration can be applied locally to the current repository or globally to the user account.',
     options: [
-        { id: 'key', flag: '', description: "The configuration key.", longDescription: "The name of the configuration variable you want to read or write (e.g., 'user.name').", type: 'string' as const, placeholder: "user.name", requiresValue: true },
-        { id: 'value', flag: '', description: "The new value for the key.", longDescription: "The value to set for the configuration key. If omitted, the command will show the current value for the key.", type: 'string' as const, placeholder: '"Your Name"', requiresValue: true },
-        { id: 'global', flag: '--global', description: "Use global configuration.", longDescription: "Applies the configuration to the global ~/.gitconfig file, affecting all of your repositories.", type: 'boolean' as const, requiresValue: false },
-        { id: 'list', flag: '--list', description: "List all variables.", longDescription: "Lists all configuration variables for the current scope (local or global).", type: 'boolean' as const, requiresValue: false },
-    ]
+      { id: 'global', flag: '--global', description: "Use global config file.", longDescription: "For writing options: write to global ~/.gitconfig file rather than the repository .git/config.", type: 'boolean' as const, requiresValue: false },
+      { id: 'list', flag: '--list', description: "List all variables.", longDescription: "List all variables set in the configuration file, along with their values.", type: 'boolean' as const, requiresValue: false },
+      { id: 'key', flag: '', description: "Config key.", longDescription: "The configuration key to get, set, or unset (e.g. user.name).", type: 'string' as const, placeholder: "section.key", requiresValue: true },
+      { id: 'value', flag: '', description: "Config value.", longDescription: "The value to set for the given key.", type: 'string' as const, placeholder: "value", requiresValue: true },
+    ],
   },
   {
     id: 'describe',
     name: 'describe',
     icon: DescribeIcon,
-    description: "Give an object a human-readable name based on an available ref.",
-    longDescription: "This command finds the most recent tag that is reachable from a commit. If the tag points to the commit, then only the tag is shown. If the tag points to an ancestor of the commit, the output will be <tag>-<number-of-commits>-g<short-hash>.",
+    description: 'Give an object a human-readable name based on an available ref.',
+    longDescription: 'The command finds the most recent tag that is reachable from a commit. If the tag points to the commit, then only the tag is shown. Otherwise, it suffixes the tag name with the number of additional commits on top of the tagged object and the abbreviated object name of the most recent commit.',
     options: [
-        { id: 'commit-ish', flag: '', description: "Commit-ish to describe.", longDescription: "The commit-ish object to describe. Defaults to HEAD if not specified.", type: 'string' as const, placeholder: "HEAD", requiresValue: true },
-        { id: 'tags', flag: '--tags', description: "Use tags for describing.", longDescription: "Instead of using only annotated tags, use any tag found in refs/tags.", type: 'boolean' as const, requiresValue: false },
-        { id: 'all', flag: '--all', description: "Use all refs.", longDescription: "Instead of using only the annotated tags, use any ref found in refs/.", type: 'boolean' as const, requiresValue: false },
-    ]
+        { id: 'tags', flag: '--tags', description: 'Use any tag.', longDescription: 'Instead of only using annotated tags, use any tag found in refs/tags.', type: 'boolean' as const, requiresValue: false },
+        { id: 'all', flag: '--all', description: 'Use any ref.', longDescription: 'Instead of only using tags, use any ref found in refs/.', type: 'boolean' as const, requiresValue: false },
+        { id: 'commit-ish', flag: '', description: 'Commit to describe.', longDescription: 'The commit-ish object to describe. Defaults to HEAD.', type: 'string' as const, placeholder: 'HEAD', requiresValue: true },
+    ],
   },
   {
     id: 'diff',
     name: 'diff',
     icon: DiffIcon,
-    description: "Show changes between commits, commit and working tree, etc.",
-    longDescription: "Shows changes between the working tree and the index or a tree, changes between the index and a tree, changes between two trees, changes between two blob objects, or changes between two files on disk.",
+    description: 'Show changes between commits, commit and working tree, etc.',
+    longDescription: 'This command shows the differences between various states in your Git repository. It can compare the working directory to the staging area (index), the staging area to the last commit, two different commits, and more.',
     options: [
-        { id: 'file', flag: '', description: "File to diff.", longDescription: "Limit the diff to the named file.", type: 'string' as const, placeholder: "path/to/file", requiresValue: true },
-        { id: 'staged', flag: '--staged', description: "Show staged changes.", longDescription: "Show changes between the index (staged changes) and the last commit (HEAD). Also known as '--cached'.", type: 'boolean' as const, requiresValue: false },
-        { id: 'word-diff', flag: '--word-diff', description: "Show word-level differences.", longDescription: "Show differences on a word-by-word basis, instead of line-by-line.", type: 'boolean' as const, requiresValue: false },
-    ]
+        { id: 'staged', flag: '--staged', description: 'Show staged changes.', longDescription: 'Show differences between the staging area (index) and the last commit (HEAD).', type: 'boolean' as const, requiresValue: false },
+        { id: 'file', flag: '--', description: 'Limit to a file.', longDescription: 'Show differences for a specific file path.', type: 'string' as const, placeholder: '<file-path>', requiresValue: true },
+        { id: 'commit', flag: '', description: 'Compare with a commit.', longDescription: 'Show differences between the working directory and the specified commit.', type: 'string' as const, placeholder: '<commit>', requiresValue: true },
+    ],
   },
   {
     id: 'fetch',
     name: 'fetch',
-    // Fix: Directly assign the icon component to ensure correct type inference.
     icon: FetchIcon,
-    description: "Download objects and refs from another repository.",
-    longDescription: "The 'fetch' command downloads commits, files, and refs from a remote repository into your local repo. It doesn't merge or modify your current work, it just updates your local knowledge of the remote state.",
+    description: 'Download objects and refs from another repository.',
+    longDescription: 'Fetch branches and/or tags from one or more other repositories, along with the objects necessary to complete their histories. Remote-tracking branches are updated. This does NOT merge the changes into your local branches.',
     options: [
-        { id: 'remote', flag: '', description: "The remote to fetch from.", longDescription: "Specifies which remote to fetch from (e.g., 'origin'). If blank, it uses the default remote.", type: 'string' as const, placeholder: "origin", requiresValue: true },
-        { id: 'all', flag: '--all', description: "Fetch all remotes.", longDescription: "Fetches from all of your configured remote repositories.", type: 'boolean' as const, requiresValue: false },
-        { id: 'prune', flag: '--prune', description: "Prune stale branches.", longDescription: "Before fetching, remove any remote-tracking references that no longer exist on the remote.", type: 'boolean' as const, requiresValue: false },
-    ]
+      { id: 'prune', flag: '--prune', description: 'Prune stale branches.', longDescription: 'Before fetching, remove any remote-tracking references that no longer exist on the remote.', type: 'boolean' as const, requiresValue: false },
+      { id: 'all', flag: '--all', description: 'Fetch all remotes.', longDescription: 'Fetch from all remotes defined in your configuration.', type: 'boolean' as const, requiresValue: false },
+      { id: 'repository', flag: '', description: 'Remote to fetch from.', longDescription: 'The remote repository to fetch from (e.g., origin).', type: 'string' as const, placeholder: 'origin', requiresValue: true },
+    ],
   },
   {
     id: 'grep',
     name: 'grep',
     icon: GrepIcon,
-    description: "Print lines matching a pattern.",
-    longDescription: "Looks for specified patterns in the contents of files in the working tree, blobs registered in the index file, or blobs in trees of commits.",
+    description: 'Print lines matching a pattern.',
+    longDescription: 'Look for specified patterns in the tracked files in the working tree, blobs registered in the index file, or blobs in given tree objects.',
     options: [
-        { id: 'pattern', flag: '', description: "The pattern to search for.", longDescription: "The regular expression or string to match against file contents.", type: 'string' as const, placeholder: "searchTerm", requiresValue: true },
-        { id: 'path', flag: '--', description: "File(s) to search.", longDescription: "Limit the search to specific files or directories.", type: 'string' as const, placeholder: "src/", requiresValue: true },
-        { id: 'n', flag: '-n', description: "Show line numbers.", longDescription: "Prefix the line number to the output.", type: 'boolean' as const, requiresValue: false },
-        { id: 'i', flag: '-i', description: "Ignore case.", longDescription: "Ignore case distinctions in both the pattern and the files.", type: 'boolean' as const, requiresValue: false },
-    ]
+        { id: 'pattern', flag: '', description: 'Pattern to search for.', longDescription: 'The pattern to search for. Can be a simple string or a regular expression.', type: 'string' as const, placeholder: 'pattern', requiresValue: true },
+        { id: 'i', flag: '-i', description: 'Ignore case.', longDescription: 'Perform a case-insensitive search.', type: 'boolean' as const, requiresValue: false },
+        { id: 'n', flag: '-n', description: 'Show line numbers.', longDescription: 'Prefix the line number to the matching lines.', type: 'boolean' as const, requiresValue: false },
+        { id: 'I', flag: '-I', description: 'Ignore binary files.', longDescription: "Don't match the pattern in binary files.", type: 'boolean' as const, requiresValue: false },
+    ],
   },
   {
     id: 'log',
     name: 'log',
-    // Fix: Directly assign the icon component to ensure correct type inference.
     icon: LogIcon,
-    description: "Show commit logs.",
-    longDescription: "The 'log' command displays the commit history. It's highly customizable to show you exactly the information you need.",
+    description: 'Show commit logs.',
+    longDescription: 'Shows the commit logs. This command can be customized to show a range of information about the commit history in various formats.',
     options: [
-        { id: 'oneline', flag: '--oneline', description: "Show one commit per line.", longDescription: "Condenses the log output to show the commit hash and title on a single line.", type: 'boolean' as const, requiresValue: false },
-        { id: 'graph', flag: '--graph', description: "Display an ASCII graph.", longDescription: "Draws a text-based graphical representation of the commit history on the left side of the output.", type: 'boolean' as const, requiresValue: false },
-        { id: 'n', flag: '-n', description: "Limit number of commits.", longDescription: "Limits the number of commits to show in the output.", type: 'string' as const, placeholder: "10", requiresValue: true },
-        { id: 'since', flag: '--since', description: "Show commits more recent than a date.", longDescription: "Shows commits more recent than a specific date (e.g., '2023-01-01').", type: 'string' as const, placeholder: "YYYY-MM-DD", requiresValue: true },
-        { id: 'until', flag: '--until', description: "Show commits older than a date.", longDescription: "Shows commits older than a specific date (e.g., '2023-12-31').", type: 'string' as const, placeholder: "YYYY-MM-DD", requiresValue: true },
-    ]
+      { id: 'graph', flag: '--graph', description: 'Draw a text-based graphical representation of the commit history.', longDescription: 'This option provides a visual representation of branches and merges in the commit log.', type: 'boolean' as const, requiresValue: false },
+      { id: 'oneline', flag: '--oneline', description: 'Show each commit as a single line.', longDescription: 'This is a shorthand for `--pretty=oneline --abbrev-commit` used together.', type: 'boolean' as const, requiresValue: false },
+      { id: 'author', flag: '--author', description: 'Filter by author.', longDescription: 'Limit the commits output to ones with author header lines that match the specified pattern.', type: 'string' as const, placeholder: '<pattern>', requiresValue: true },
+      { id: 'all', flag: '--all', description: 'Show all branches.', longDescription: 'Pretend as if all the refs in `refs/` are listed on the command line as `<commit>`.', type: 'boolean' as const, requiresValue: false },
+    ],
   },
   {
     id: 'merge',
     name: 'merge',
     icon: MergeIcon,
-    description: "Join two or more development histories together.",
-    longDescription: "Merges the specified branch into the current branch. Git will attempt to automatically combine the histories; if there are conflicting changes, you will be asked to resolve them.",
+    description: 'Join two or more development histories together.',
+    longDescription: 'Incorporates changes from the named commits (since the time their histories diverged from the current branch) into the current branch. This is most often used to combine two branches.',
     options: [
-      { id: 'branch', flag: '', description: "Branch to merge.", longDescription: "The name of the branch whose changes you want to merge into your current branch.", type: 'string' as const, placeholder: "feature-branch", requiresValue: true },
-      { id: 'no-ff', flag: '--no-ff', description: "Create a merge commit.", longDescription: "Create a merge commit even when the merge could be resolved as a fast-forward. This is useful for preserving the history of a feature branch.", type: 'boolean' as const, requiresValue: false },
-      { id: 'squash', flag: '--squash', description: "Squash commits.", longDescription: "Combine all of the merged branch's commits into a single new commit on top of the current branch. The original commits from the other branch are not included in the history.", type: 'boolean' as const, requiresValue: false },
-      { id: 'abort', flag: '--abort', description: "Abort a conflicted merge.", longDescription: "If a merge results in conflicts, this command will abort the merge process and try to reconstruct the pre-merge state.", type: 'boolean' as const, requiresValue: false },
-    ]
+        { id: 'branch', flag: '', description: 'Branch to merge.', longDescription: 'The name of the branch to merge into the current branch.', type: 'string' as const, placeholder: '<branch-name>', requiresValue: true },
+        { id: 'ff-only', flag: '--ff-only', description: 'Fast-forward only.', longDescription: 'Refuse to merge and exit with a non-zero status unless the current HEAD is already up to date or the merge can be resolved as a fast-forward.', type: 'boolean' as const, requiresValue: false },
+        { id: 'no-ff', flag: '--no-ff', description: 'No fast-forward.', longDescription: 'Create a merge commit even when the merge could be resolved as a fast-forward.', type: 'boolean' as const, requiresValue: false },
+    ],
   },
   {
     id: 'mv',
     name: 'mv',
     icon: MvIcon,
-    description: "Move or rename a file, a directory, or a symlink.",
-    longDescription: "Renames a file in the working tree and stages the change. It is equivalent to moving the file on the filesystem and then running 'git rm' on the old path and 'git add' on the new path.",
+    description: 'Move or rename a file, a directory, or a symlink.',
+    longDescription: 'Renames a file or directory in the working tree and stages the change. It is equivalent to moving the file on the filesystem and then running `git add` for the new path and `git rm` for the old path.',
     options: [
-      { id: 'source', flag: '', description: "Source path.", longDescription: "The current path of the file or directory.", type: 'string' as const, placeholder: "old-path/file.txt", requiresValue: true },
-      { id: 'destination', flag: '', description: "Destination path.", longDescription: "The new path for the file or directory.", type: 'string' as const, placeholder: "new-path/file.txt", requiresValue: true },
-      { id: 'f', flag: '-f', description: "Force rename or move.", longDescription: "Force the operation even if the target exists. Use with caution.", type: 'boolean' as const, requiresValue: false },
-    ]
+        { id: 'source', flag: '', description: 'Source file/directory.', longDescription: 'The current path of the file or directory to be renamed.', type: 'string' as const, placeholder: '<source>', requiresValue: true },
+        { id: 'destination', flag: '', description: 'Destination file/directory.', longDescription: 'The new path for the file or directory.', type: 'string' as const, placeholder: '<destination>', requiresValue: true },
+    ],
   },
   {
     id: 'pull',
     name: 'pull',
     icon: PullIcon,
-    description: "Fetch from and integrate with another repository.",
-    longDescription: "The 'git pull' command is a shortcut for 'git fetch' followed by 'git merge'. It fetches changes from a remote and integrates them with the current branch.",
+    description: 'Fetch from and integrate with another repository or a local branch.',
+    longDescription: 'In its default mode, `git pull` is shorthand for `git fetch` followed by `git merge FETCH_HEAD`. More precisely, `git pull` runs `git fetch` with the given parameters and calls `git merge` to merge the retrieved branch heads into the current branch.',
     options: [
-      { id: 'remote', flag: '', description: "Remote repository.", longDescription: "The remote repository to pull from. Defaults to 'origin'.", type: 'string' as const, placeholder: "origin", requiresValue: true },
-      { id: 'branch', flag: '', description: "Remote branch.", longDescription: "The name of the remote branch to pull. Defaults to the current local branch's upstream branch.", type: 'string' as const, placeholder: "main", requiresValue: true },
-      { id: 'rebase', flag: '--rebase', description: "Use rebase instead of merge.", longDescription: "Instead of using 'git merge' to integrate changes, use 'git rebase'. This creates a more linear history.", type: 'boolean' as const, requiresValue: false },
-      { id: 'ff-only', flag: '--ff-only', description: "Fast-forward only.", longDescription: "Only update the branch if it can be fast-forwarded. If not, the command will fail, preventing a merge commit.", type: 'boolean' as const, requiresValue: false },
-    ]
+        { id: 'rebase', flag: '--rebase', description: 'Rebase instead of merge.', longDescription: 'When true, rebase the current branch on top of the upstream branch after fetching.', type: 'boolean' as const, requiresValue: false },
+        { id: 'ff-only', flag: '--ff-only', description: 'Fast-forward only.', longDescription: 'Only update the branch pointer if the merge can be resolved as a fast-forward.', type: 'boolean' as const, requiresValue: false },
+        { id: 'remote', flag: '', description: 'Remote to pull from.', longDescription: 'The remote repository to pull from (e.g., origin).', type: 'string' as const, placeholder: 'origin', requiresValue: true },
+        { id: 'branch', flag: '', description: 'Branch to pull.', longDescription: 'The branch on the remote to pull.', type: 'string' as const, placeholder: 'main', requiresValue: true },
+    ],
   },
   {
     id: 'push',
     name: 'push',
     icon: PushIcon,
-    description: "Update remote refs along with associated objects.",
-    longDescription: "The 'push' command uploads local repository content to a remote repository. It's how you share your commits with others.",
+    description: 'Update remote refs along with associated objects.',
+    longDescription: 'Updates remote refs using local refs, while sending objects necessary to complete the given refs. This command is used to upload local repository content to a remote repository.',
     options: [
-      { id: 'remote', flag: '', description: "Remote repository.", longDescription: "The destination remote repository. Defaults to 'origin'.", type: 'string' as const, placeholder: "origin", requiresValue: true },
-      { id: 'branch', flag: '', description: "Branch to push.", longDescription: "The local branch to push to the remote. If omitted, Git uses the current branch.", type: 'string' as const, placeholder: "main", requiresValue: true },
-      { id: 'u', flag: '-u', description: "Set upstream tracking.", longDescription: "For every branch that is up to date or successfully pushed, add upstream (tracking) reference. This simplifies future 'git pull' commands.", type: 'boolean' as const, requiresValue: false },
-      { id: 'force', flag: '--force', description: "Force the push.", longDescription: "Forcibly overwrites the remote branch. This can discard other people's commits and should be used with extreme caution.", type: 'boolean' as const, requiresValue: false },
-      { id: 'tags', flag: '--tags', description: "Push all tags.", longDescription: "Pushes all of your local tags to the remote repository.", type: 'boolean' as const, requiresValue: false },
-    ]
+        { id: 'force', flag: '--force', description: 'Force push.', longDescription: 'Usually, the command refuses to update a remote ref that is not an ancestor of the local ref used to overwrite it. This flag disables the check. Use with extreme caution.', type: 'boolean' as const, requiresValue: false },
+        { id: 'tags', flag: '--tags', description: 'Push all tags.', longDescription: 'All tags under refs/tags are pushed, in addition to refspecs explicitly listed on the command line.', type: 'boolean' as const, requiresValue: false },
+        { id: 'remote', flag: '', description: 'Remote to push to.', longDescription: 'The remote repository to push to (e.g., origin).', type: 'string' as const, placeholder: 'origin', requiresValue: true },
+        { id: 'branch', flag: '', description: 'Branch to push.', longDescription: 'The local branch to push to the remote.', type: 'string' as const, placeholder: 'main', requiresValue: true },
+    ],
   },
   {
     id: 'rebase',
     name: 'rebase',
-    // Fix: Directly assign the icon component to ensure correct type inference.
     icon: RebaseIcon,
-    description: "Reapply commits on top of another base tip.",
-    longDescription: "Rebasing is the process of moving or combining a sequence of commits to a new base commit. It creates a linear history, which can be easier to read.",
+    description: 'Reapply commits on top of another base tip.',
+    longDescription: 'Rebasing is the process of moving or combining a sequence of commits to a new base commit. It is a powerful way to rewrite history and maintain a linear project history.',
     options: [
-      { id: 'i', flag: '-i', description: "Interactive rebase.", longDescription: "Interactive rebasing gives you the opportunity to alter individual commits in the process. You can reorder, squash, edit, or remove commits.", type: 'boolean' as const, requiresValue: false },
-      { id: 'base', flag: '', description: "Target branch or commit.", longDescription: "The branch or commit hash onto which you want to rebase your current branch.", type: 'string' as const, placeholder: "main", requiresValue: true },
-    ]
+      { id: 'i', flag: '-i', description: 'Interactive.', longDescription: 'Start an interactive rebase session, which allows you to edit, reword, squash, or drop commits.', type: 'boolean' as const, requiresValue: false },
+      { id: 'base', flag: '', description: 'Upstream branch or commit.', longDescription: 'The branch or commit to rebase onto. This can be a branch name, a commit hash, or a relative reference like HEAD~3.', type: 'string' as const, placeholder: 'main or HEAD~3', requiresValue: true },
+    ],
   },
   {
     id: 'reflog',
     name: 'reflog',
     icon: ReflogIcon,
-    description: "Manage reflog information.",
-    longDescription: "The 'reflog' command tracks when the tips of branches and other references were updated in the local repository. It's a safety net that allows you to go back to commits even if they are not referenced by any branch or tag.",
-    options: []
+    description: 'Manage reflog information.',
+    longDescription: 'Reference logs, or "reflogs", record when the tips of branches and other references were updated in the local repository. Reflog is a safety net; it tracks every change to the HEAD, allowing you to go back to states that may otherwise seem lost.',
+    options: [],
   },
   {
     id: 'remote',
     name: 'remote',
     icon: RemoteIcon,
-    description: "Manage set of tracked repositories.",
-    longDescription: "Manages the set of remote repositories whose branches you track. You can add, rename, and remove remotes.",
+    description: 'Manage set of tracked repositories.',
+    longDescription: 'Manage the set of repositories ("remotes") whose branches you track.',
     options: [
-        { id: 'v', flag: '-v', description: "Be verbose.", longDescription: "Show URLs of remotes when listing. Without this, only the names of the remotes are shown.", type: 'boolean' as const, requiresValue: false },
-        { id: 'add', flag: 'add', description: "Add a remote.", longDescription: "Adds a remote named <name> for the repository at <url>.", type: 'string' as const, placeholder: "origin https://..", requiresValue: true },
-        { id: 'remove', flag: 'remove', description: "Remove a remote.", longDescription: "Removes the remote with the specified name.", type: 'string' as const, placeholder: "origin", requiresValue: true },
-        { id: 'rename', flag: 'rename', description: "Rename a remote.", longDescription: "Renames a remote from <old> to <new>.", type: 'string' as const, placeholder: "origin upstream", requiresValue: true },
-    ]
+        { id: 'v', flag: '-v', description: 'Verbose.', longDescription: 'Be a little more verbose and show the remote URL after the name.', type: 'boolean' as const, requiresValue: false },
+        { id: 'add', flag: 'add', description: 'Add a new remote.', longDescription: 'Adds a remote named <name> for the repository at <url>.', type: 'string' as const, placeholder: '<name> <url>', requiresValue: true },
+        { id: 'remove', flag: 'remove', description: 'Remove a remote.', longDescription: 'Removes the remote named <name>.', type: 'string' as const, placeholder: '<name>', requiresValue: true },
+    ],
   },
   {
     id: 'reset',
     name: 'reset',
-    // Fix: Directly assign the icon component to ensure correct type inference.
     icon: ResetIcon,
-    description: "Reset current HEAD or unstage files.",
-    longDescription: "The 'reset' command is versatile. It can be used to unstage files from the index, or to reset your entire working tree to a previous commit. Be aware of the mode you are using as '--hard' can discard your work.",
+    description: 'Reset current HEAD to the specified state.',
+    longDescription: 'This command resets the current branch head to a specified commit and optionally updates the index and the working directory. It is a powerful command for undoing changes.',
     options: [
-        { id: 'mode', flag: '', description: "Set the reset mode.", longDescription: "Specifies the reset mode for moving HEAD. 'soft' moves HEAD but doesn't touch the staging area or working directory. 'mixed' (default) resets the staging area. 'hard' resets everything.", type: 'choice' as const, choices: ['--soft', '--mixed', '--hard'], requiresValue: true },
-        { id: 'commit-ref', flag: '', description: "Target commit for HEAD reset.", longDescription: "The commit to reset to. Typically 'HEAD~1' to go back one commit. Used with modes like '--soft'.", type: 'string' as const, placeholder: "HEAD~1", requiresValue: true },
-        { id: 'path', flag: '', description: "Unstage a file.", longDescription: "Unstages the specified file, removing it from the index without changing the working directory. This is the opposite of 'git add'. If a commit is specified, the file is reset to its state in that commit.", type: 'string' as const, placeholder: "path/to/file.js", requiresValue: true },
-    ]
+      { id: 'mode', flag: '', description: 'Reset mode.', longDescription: '`--soft`: un-commits changes, leaving them staged. `--mixed` (default): un-commits and un-stages changes. `--hard`: un-commits and deletes changes.', type: 'choice' as const, choices: ['--soft', '--mixed', '--hard'], requiresValue: true },
+      { id: 'commit-ref', flag: '', description: 'Commit reference.', longDescription: 'The commit to reset to. Can be a hash or a relative reference like HEAD~1.', type: 'string' as const, placeholder: 'HEAD~1', requiresValue: true },
+    ],
   },
   {
     id: 'restore',
     name: 'restore',
     icon: RestoreIcon,
-    description: "Restore working tree files.",
-    longDescription: "Restores files in the working tree. Use it to discard local changes in a file, or to unstage a file from the index. Unlike 'reset', it does not update your branch.",
+    description: 'Restore working tree files.',
+    longDescription: 'Restore specified paths in the working tree with some contents from a restore source. If a path is tracked but does not exist in the restore source, it will be removed to match the source.',
     options: [
-        { id: 'pathspec', flag: '', description: "File(s) to restore.", longDescription: "The path to the file or directory to restore.", type: 'string' as const, placeholder: "path/to/file", requiresValue: true },
-        { id: 'staged', flag: '--staged', description: "Unstage files.", longDescription: "Restores the file in the index, effectively unstaging it. The changes will remain in your working directory.", type: 'boolean' as const, requiresValue: false },
-        { id: 'source', flag: '--source', description: "Specify a source commit.", longDescription: "Restore the file from a specific commit or branch, instead of from the index. E.g., 'HEAD' or a commit hash.", type: 'string' as const, placeholder: "HEAD", requiresValue: true },
-    ]
+        { id: 'file', flag: '', description: 'File(s) to restore.', longDescription: 'The path to the file or directory to restore from the index.', type: 'string' as const, placeholder: '<file-path>', requiresValue: true },
+        { id: 'staged', flag: '--staged', description: 'Unstage a file.', longDescription: 'Restores the content of the index from HEAD, effectively unstaging the file without changing the working directory.', type: 'boolean' as const, requiresValue: false },
+        { id: 'source', flag: '--source', description: 'Source commit.', longDescription: 'Restore files from a specific commit instead of the index.', type: 'string' as const, placeholder: '<commit>', requiresValue: true },
+    ],
   },
   {
     id: 'revert',
     name: 'revert',
     icon: RevertIcon,
-    description: "Revert some existing commits.",
-    longDescription: "Creates a new commit that applies the inverse of the changes introduced by the target commit. This is a safe way to undo changes in a shared history, as it doesn't alter the existing commit history.",
+    description: 'Revert some existing commits.',
+    longDescription: 'Given one or more existing commits, revert the changes that the related patches introduce, and record some new commits that record them. This is a safe way to undo changes, as it does not rewrite history.',
     options: [
-        { id: 'commit', flag: '', description: "Commit to revert.", longDescription: "The commit hash to revert. This will create a new commit that undoes its changes.", type: 'string' as const, placeholder: "commit-hash", requiresValue: true },
-        { id: 'no-commit', flag: '--no-commit', description: "Do not create a commit.", longDescription: "Applies the inverse changes to your working directory and staging area, but does not create a new commit.", type: 'boolean' as const, requiresValue: false },
-        { id: 'no-edit', flag: '--no-edit', description: "Use auto-generated message.", longDescription: "Reverts the commit without launching the commit message editor.", type: 'boolean' as const, requiresValue: false },
-    ]
+        { id: 'commit', flag: '', description: 'Commit to revert.', longDescription: 'The commit hash to revert.', type: 'string' as const, placeholder: '<commit-hash>', requiresValue: true },
+        { id: 'no-edit', flag: '--no-edit', description: 'Do not edit message.', longDescription: 'Use the auto-generated commit message without launching an editor.', type: 'boolean' as const, requiresValue: false },
+    ],
   },
   {
     id: 'rm',
     name: 'rm',
-    // Fix: Directly assign the icon component to ensure correct type inference.
     icon: RmIcon,
-    description: "Remove files from the working tree and index.",
-    longDescription: "Removes files from your repository. Use the '--cached' option to un-track a file without deleting it from your disk, which is useful when adding a previously tracked file to .gitignore.",
+    description: 'Remove files from the working tree and from the index.',
+    longDescription: 'Removes files from the index, or from the working tree and the index. `git rm` will not remove a file from just your working directory.',
     options: [
-        { id: 'file', flag: '', description: "File(s) to remove.", longDescription: "The path to the file or directory you want to remove.", type: 'string' as const, placeholder: "path/to/file", requiresValue: true },
-        { id: 'cached', flag: '--cached', description: "Only remove from the index.", longDescription: "Use this option to remove a file from being tracked by Git, but keep the file in your working directory. This is often the first step before adding the file path to .gitignore.", type: 'boolean' as const, requiresValue: false },
-        { id: 'r', flag: '-r', description: "Recursive removal.", longDescription: "Allows recursive removal when removing a directory.", type: 'boolean' as const, requiresValue: false },
-    ]
+      { id: 'file', flag: '', description: "File(s) to remove.", longDescription: "The path to the file or directory to remove.", type: 'string' as const, placeholder: "path/to/file", requiresValue: true },
+      { id: 'cached', flag: '--cached', description: "Unstage only.", longDescription: "Use this option to unstage and remove paths only from the index. Working tree files, whether modified or not, will be left alone.", type: 'boolean' as const, requiresValue: false },
+      { id: 'f', flag: '-f', description: "Force removal.", longDescription: "Override the up-to-date check, which prevents removal of files that have modifications in the working directory that are not in the index.", type: 'boolean' as const, requiresValue: false },
+    ],
   },
   {
     id: 'show',
     name: 'show',
     icon: ShowIcon,
-    description: "Show various types of objects.",
-    longDescription: "Shows one or more objects (blobs, trees, tags, and commits). For commits, it shows the commit log message and a diff of the changes.",
+    description: 'Show various types of objects.',
+    longDescription: 'Shows one or more objects (blobs, trees, tags and commits). For commits, it shows the log message and a diff of the changes.',
     options: [
-        { id: 'object', flag: '', description: "Object to show.", longDescription: "The object to display (e.g., a commit hash, tag name, or branch name). Defaults to HEAD.", type: 'string' as const, placeholder: "HEAD", requiresValue: true },
-    ]
+        { id: 'object', flag: '', description: 'Object to show.', longDescription: 'The name of the object to show (e.g., a commit hash, tag, or branch name). Defaults to HEAD.', type: 'string' as const, placeholder: 'HEAD', requiresValue: true },
+    ],
   },
   {
     id: 'shortlog',
     name: 'shortlog',
     icon: ShortlogIcon,
-    description: "Summarize 'git log' output.",
-    longDescription: "Summarizes the git log output in a format suitable for release announcements. It groups commits by author and displays the first line of each commit message.",
+    description: 'Summarize `git log` output.',
+    longDescription: 'Summarizes `git log` output in a format suitable for release announcements. It groups commits by author and displays the first line of each commit message.',
     options: [
-        { id: 'n', flag: '-n', description: "Sort by number of commits.", longDescription: "Sorts the output based on the number of commits per author, rather than alphabetically.", type: 'boolean' as const, requiresValue: false },
-        { id: 's', flag: '-s', description: "Suppress commit descriptions.", longDescription: "Shows only the number of commits per author, suppressing the commit descriptions.", type: 'boolean' as const, requiresValue: false },
-    ]
+        { id: 'n', flag: '-n', description: 'Sort by number.', longDescription: 'Sort output according to the number of commits per author instead of author name.', type: 'boolean' as const, requiresValue: false },
+        { id: 's', flag: '-s', description: 'Suppress commit descriptions.', longDescription: 'Suppress commit descriptions and only provide a commit count per author.', type: 'boolean' as const, requiresValue: false },
+        { id: 'e', flag: '-e', description: 'Show email.', longDescription: "Show the author's email address.", type: 'boolean' as const, requiresValue: false },
+    ],
   },
   {
     id: 'stash',
     name: 'stash',
-    // Fix: Directly assign the icon component to ensure correct type inference.
     icon: StashIcon,
-    description: "Stash the changes in a dirty working directory away.",
-    longDescription: "Use 'stash' when you want to record the current state of the working directory and the index, but want to go back to a clean working directory. The command saves your local modifications away and reverts the working directory to match the HEAD commit.",
+    description: 'Stash the changes in a dirty working directory away.',
+    longDescription: 'Use `git stash` when you want to record the current state of the working directory and the index, but want to go back to a clean working directory. The command saves your local modifications away and reverts the working directory to match the `HEAD` commit.',
     options: [
-        { id: 'push', flag: 'push', description: "Save your local modifications to a new stash.", longDescription: "This is the default operation. It saves your changes and cleans the working directory.", type: 'boolean' as const, requiresValue: false },
-        { id: 'apply', flag: 'apply', description: "Apply the latest stash.", longDescription: "Applies the changes from the most recent stash without removing it from the stash list.", type: 'boolean' as const, requiresValue: false },
-        { id: 'pop', flag: 'pop', description: "Apply and drop the latest stash.", longDescription: "Applies the most recent stash and then removes it from the stash list.", type: 'boolean' as const, requiresValue: false },
-        { id: 'list', flag: 'list', description: "List all stashes.", longDescription: "Shows a list of all your stashed changes.", type: 'boolean' as const, requiresValue: false },
-        { id: 'drop', flag: 'drop', description: "Drop the latest stash.", longDescription: "Removes the most recent stash from the stash list.", type: 'boolean' as const, requiresValue: false },
-    ]
+      { id: 'list', flag: 'list', description: 'List stashes.', longDescription: 'List the stashes that you currently have.', type: 'boolean' as const, requiresValue: false },
+      { id: 'apply', flag: 'apply', description: 'Apply a stash.', longDescription: 'Apply the changes recorded in a stash to your working directory.', type: 'boolean' as const, requiresValue: false },
+      { id: 'pop', flag: 'pop', description: 'Apply and drop a stash.', longDescription: 'Apply the stash and then immediately drop it from the stash list.', type: 'boolean' as const, requiresValue: false },
+      { id: 'drop', flag: 'drop', description: 'Drop a stash.', longDescription: 'Remove a single stash from the list.', type: 'boolean' as const, requiresValue: false },
+    ],
   },
   {
     id: 'status',
     name: 'status',
-    // Fix: Directly assign the icon component to ensure correct type inference.
     icon: StatusIcon,
-    description: "Show the working tree status.",
-    longDescription: "Displays paths that have differences between the index file and the current HEAD commit (staged changes), paths that have differences between the working tree and the index file (unstaged changes), and paths in the working tree that are not tracked by Git (untracked files).",
+    description: 'Show the working tree status.',
+    longDescription: 'Displays paths that have differences between the index file and the current HEAD commit, paths that have differences between the working tree and the index file, and paths in the working tree that are not tracked by Git.',
     options: [
-        { id: 's', flag: '-s', description: "Show status in short format.", longDescription: "Gives the output in the short-format, which is more compact and easier to parse.", type: 'boolean' as const, requiresValue: false },
-        { id: 'b', flag: '-b', description: "Show branch information.", longDescription: "Show the branch and tracking info, even in short-format.", type: 'boolean' as const, requiresValue: false },
-    ]
+        { id: 's', flag: '-s', description: 'Short format.', longDescription: 'Give the output in the short-format.', type: 'boolean' as const, requiresValue: false },
+        { id: 'b', flag: '-b', description: 'Show branch.', longDescription: 'Show the branch and tracking info.', type: 'boolean' as const, requiresValue: false },
+    ],
   },
   {
     id: 'switch',
     name: 'switch',
-    // Fix: Directly assign the icon component to ensure correct type inference.
     icon: SwitchIcon,
-    description: "Switch branches.",
-    longDescription: "The 'switch' command lets you switch your current working branch. You can switch to an existing branch, or use the '-c' flag to create a new branch and switch to it in a single step.",
+    description: 'Switch branches.',
+    longDescription: 'A more modern and clearer alternative to `git checkout <branch>`. Switches the current working branch to the specified branch.',
     options: [
-        { id: 'branch-name', flag: '', description: "Branch to switch to.", longDescription: "The name of an existing branch you want to move to. Cannot be used with '-c'.", type: 'string' as const, placeholder: "feature-branch", requiresValue: true },
-        { id: 'c', flag: '-c', description: "Create and switch to a new branch.", longDescription: "Creates a new branch with the given name and then switches to it. Cannot be used with the plain branch name argument.", type: 'string' as const, placeholder: "new-feature-branch", requiresValue: true },
-    ]
+      { id: 'branch', flag: '', description: 'Branch to switch to.', longDescription: 'The name of the branch to switch to.', type: 'string' as const, placeholder: '<branch-name>', requiresValue: true },
+      { id: 'c', flag: '-c', description: 'Create and switch.', longDescription: 'Create a new branch and immediately switch to it.', type: 'string' as const, placeholder: '<new-branch-name>', requiresValue: true },
+      { id: 'detached', flag: '--detach', description: 'Detached HEAD.', longDescription: 'Switch to a commit instead of a branch, putting you in a "detached HEAD" state.', type: 'string' as const, placeholder: '<commit>', requiresValue: true },
+    ],
   },
   {
     id: 'tag',
     name: 'tag',
     icon: TagIcon,
-    description: "Create, list, delete or verify a tag object.",
-    longDescription: "Tags are used to mark specific points in a repository’s history as being important. Typically, people use this functionality to mark release points (e.g., v1.0).",
+    description: 'Create, list, delete or verify a tag object signed with GPG.',
+    longDescription: 'Tags are used to mark specific points in a repository’s history as being important, typically for releases. There are two main types: lightweight tags and annotated tags.',
     options: [
-        { id: 'list', flag: '--list', description: "List all tags.", longDescription: "Lists all tags in the repository. Can be combined with a pattern to list specific tags.", type: 'string' as const, placeholder: "v1.*", requiresValue: true },
-        { id: 'a', flag: '-a', description: "Create an annotated tag.", longDescription: "Creates an annotated tag, which is stored as a full object in the Git database.", type: 'string' as const, placeholder: "v1.0.0", requiresValue: true },
-        { id: 'm', flag: '-m', description: "Tag message.", longDescription: "Use the given message for an annotated tag, instead of prompting for one.", type: 'string' as const, placeholder: "Release version 1.0.0", requiresValue: true },
-        { id: 'd', flag: '-d', description: "Delete a tag.", longDescription: "Deletes the tag with the given name.", type: 'string' as const, placeholder: "v1.0.0-beta", requiresValue: true },
-    ]
+        { id: 'a', flag: '-a', description: 'Annotated tag.', longDescription: 'Make an unsigned, annotated tag object.', type: 'string' as const, placeholder: '<tag-name>', requiresValue: true },
+        { id: 'd', flag: '-d', description: 'Delete tag.', longDescription: 'Delete an existing tag.', type: 'string' as const, placeholder: '<tag-name>', requiresValue: true },
+        { id: 'l', flag: '-l', description: 'List tags.', longDescription: 'List all tags.', type: 'boolean' as const, requiresValue: false },
+        { id: 'commit', flag: '', description: 'Commit to tag.', longDescription: 'Specify the commit to tag. Defaults to HEAD.', type: 'string' as const, placeholder: 'HEAD', requiresValue: true },
+    ],
   },
   {
     id: 'worktree',
     name: 'worktree',
     icon: WorktreeIcon,
-    description: "Manage multiple working trees.",
-    longDescription: "A git worktree allows you to have multiple checkouts of a repository on your filesystem at the same time. This is useful for working on different features or hotfixes in parallel without needing to stash or commit your work when switching contexts.",
+    description: 'Manage multiple working trees.',
+    longDescription: 'Allows you to have multiple working trees attached to the same repository, letting you check out more than one branch at a time. This is useful for working on a hotfix on one branch while continuing development on another.',
     options: [
-        { id: 'list', flag: 'list', description: "List all worktrees.", longDescription: "Shows a list of all your worktrees, including their path, HEAD commit, and branch.", type: 'boolean' as const, requiresValue: false },
-        { id: 'add', flag: 'add', description: "Create a new worktree.", longDescription: "Creates a new worktree at the specified path, checking out the specified branch.", type: 'string' as const, placeholder: "<path> <branch>", requiresValue: true },
-        { id: 'remove', flag: 'remove', description: "Remove a worktree.", longDescription: "Removes the worktree at the specified path. This will fail if the worktree has untracked or modified files, unless --force is used.", type: 'string' as const, placeholder: "<path>", requiresValue: true },
-        { id: 'force', flag: '--force', description: "Force remove.", longDescription: "Forces the removal of a worktree even if it has uncommitted changes.", type: 'boolean' as const, requiresValue: false },
-    ]
+        { id: 'add', flag: 'add', description: 'Add a worktree.', longDescription: 'Create a new worktree at the specified path for a given branch.', type: 'string' as const, placeholder: '<path> <branch>', requiresValue: true },
+        { id: 'list', flag: 'list', description: 'List worktrees.', longDescription: 'List all worktrees associated with the repository.', type: 'boolean' as const, requiresValue: false },
+        { id: 'remove', flag: 'remove', description: 'Remove a worktree.', longDescription: 'Remove the worktree at the specified path.', type: 'string' as const, placeholder: '<path>', requiresValue: true },
+        { id: 'prune', flag: 'prune', description: 'Prune worktrees.', longDescription: 'Remove worktree information for paths that no longer exist on the filesystem.', type: 'boolean' as const, requiresValue: false },
+    ],
   },
 ].sort((a, b) => a.name.localeCompare(b.name));
