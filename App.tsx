@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { GoogleGenAI, GenerateContentResponse } from "@google/genai";
 import type { ConstructedGlyph, GitOption, GitVerb, RebaseCommit, Commit, BlameLine, RepoFile, DiffLine, Hunk, ReflogEntry, GrepResult, BisectStatus, Worktree, Remote, Stash, SageMessage } from './types';
@@ -468,7 +469,6 @@ const App: React.FC = () => {
     const [liveExplanation, setLiveExplanation] = useState('');
     const [isLoadingExplanation, setIsLoadingExplanation] = useState(false);
     const [copied, setCopied] = useState(false);
-    const [showCommandList, setShowCommandList] = useState(true);
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const sageChatEndRef = useRef<HTMLDivElement>(null);
 
@@ -575,7 +575,6 @@ const App: React.FC = () => {
     const handleSelectVerb = useCallback((verb: GitVerb) => {
         setConstructedGlyphs([{ verbId: verb.id, value: verb.name, instanceId: `verb-${Date.now()}` }]);
         setSelectedVerb(verb);
-        setShowCommandList(false);
         setSidebarOpen(false);
         setDiffTarget(null);
         handleGlyphChange(`verb-${Date.now()}`, verb.name); // Initial explanation
@@ -606,7 +605,6 @@ const App: React.FC = () => {
         setConstructedGlyphs([]);
         setSelectedVerb(null);
         setLiveExplanation('');
-        setShowCommandList(true);
         setDiffTarget(null);
     }, [constructedGlyphs, commandHistory]);
 
@@ -621,7 +619,6 @@ const App: React.FC = () => {
         if (verb) {
             setSelectedVerb(verb);
             setConstructedGlyphs(glyphs);
-            setShowCommandList(false);
         }
     }, []);
 
@@ -844,6 +841,30 @@ const App: React.FC = () => {
         }
     };
     
+    const WelcomePanel = () => (
+        <div className="flex-grow flex flex-col items-center justify-center text-center p-8 bg-paper-off-white/80 border border-deep-charcoal/10 rounded-panel shadow-panel animate-fade-in-slide-up">
+            <svg width="64" height="64" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg" className="mb-4 text-deep-charcoal">
+                <path d="M18 10L30 10" stroke="currentColor" strokeOpacity="0.5" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>
+                <path d="M6 10L12 10" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>
+                <path d="M36 10L42 10" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>
+                <path d="M18 24L30 24" stroke="#B58900" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>
+                <path d="M6 24L12 24" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>
+                <path d="M36 24L42 24" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>
+                <path d="M18 38L30 38" stroke="currentColor" strokeOpacity="0.5" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>
+                <path d="M6 38L12 38" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>
+                <path d="M36 38L42 38" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+            <h2 className="text-3xl font-bold text-deep-charcoal mb-2">Welcome to Glyph</h2>
+            <p className="text-stone-gray max-w-md mb-6">
+                An interactive Git simulator designed to make learning commands intuitive. Build commands piece by piece, get live explanations, and see their impact on a virtual repository.
+            </p>
+            <div className="flex items-center justify-center font-bold text-deep-charcoal p-3 bg-burnt-gold/10 rounded-lg">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mr-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 17l-5-5m0 0l5-5m-5 5h12" /></svg>
+                <span>Select a command from the sidebar to begin.</span>
+            </div>
+        </div>
+    );
+    
     const CommandBuilder = () => (
         <div className="flex-1 flex flex-col p-4 md:p-8 overflow-y-auto">
             <header className="flex justify-between items-center mb-6">
@@ -853,57 +874,61 @@ const App: React.FC = () => {
                 </button>
             </header>
 
-            <div id="glyph-constructor" className="bg-paper-off-white/80 border border-deep-charcoal/10 p-4 rounded-panel shadow-panel min-h-[120px]">
-                <div className="flex flex-wrap items-start">
-                    {constructedGlyphs.length > 0 && constructedGlyphs.map((glyph, index) => {
-                        const option = selectedVerb?.options.find(o => o.id === glyph.optionId);
-                        return (
-                            <GlyphComponent
-                                key={glyph.instanceId}
-                                prefix={index === 0 ? 'git' : (option?.flag || '')}
-                                value={glyph.value}
-                                placeholder={option?.placeholder || '...'}
-                                option={option}
-                                onValueChange={(newValue) => handleGlyphChange(glyph.instanceId, newValue)}
-                                onRemove={() => handleRemoveGlyph(glyph.instanceId)}
-                                isVerb={index === 0}
-                            />
-                        );
-                    })}
-                </div>
-            </div>
-
-            {selectedVerb && (
-                <div className="mt-4 flex flex-wrap items-center">
-                    {selectedVerb.options.map(option => (
-                        <button key={option.id} onClick={() => handleAddOption(option)} className="mr-2 mb-2 text-sm font-mono bg-paper-white border border-deep-charcoal/20 px-3 py-1.5 rounded-md hover:border-burnt-gold/50 hover:text-burnt-gold transition-colors">
-                            + {option.flag || option.description.split('.')[0]}
-                        </button>
-                    ))}
-                </div>
-            )}
-            
-            {commandString && (
-                <div className="mt-6 font-mono text-sm bg-deep-charcoal text-paper-white p-4 rounded-md flex items-center justify-between">
-                    <pre className="overflow-x-auto"><code>{commandString}</code></pre>
-                    <div className="flex items-center space-x-4 pl-4">
-                        <button onClick={handleCopyCommand}><CopyIcon copied={copied} /></button>
-                        <button onClick={handleClearCommand}><TrashIcon /></button>
-                    </div>
-                </div>
-            )}
-            
-            <div className="mt-8 flex-grow">
-                {liveExplanation && (
-                    <div className="border-l-4 border-burnt-gold/50 pl-6 py-2">
-                        <h2 className="text-lg font-bold text-deep-charcoal flex items-center mb-2"><LearningIcon /> <span className="ml-2">Live Scribe</span></h2>
-                        <div className="prose prose-sm text-stone-gray max-w-none">
-                            {isLoadingExplanation ? <p>Thinking...</p> : <p dangerouslySetInnerHTML={{ __html: liveExplanation.replace(/\n/g, '<br />') }} />}
+            {selectedVerb ? (
+                <div className="flex flex-col flex-grow">
+                    <div id="glyph-constructor" className="bg-paper-off-white/80 border border-deep-charcoal/10 p-4 rounded-panel shadow-panel min-h-[120px]">
+                        <div className="flex flex-wrap items-start">
+                            {constructedGlyphs.length > 0 && constructedGlyphs.map((glyph, index) => {
+                                const option = selectedVerb?.options.find(o => o.id === glyph.optionId);
+                                return (
+                                    <GlyphComponent
+                                        key={glyph.instanceId}
+                                        prefix={index === 0 ? 'git' : (option?.flag || '')}
+                                        value={glyph.value}
+                                        placeholder={option?.placeholder || '...'}
+                                        option={option}
+                                        onValueChange={(newValue) => handleGlyphChange(glyph.instanceId, newValue)}
+                                        onRemove={() => handleRemoveGlyph(glyph.instanceId)}
+                                        isVerb={index === 0}
+                                    />
+                                );
+                            })}
                         </div>
                     </div>
-                )}
-                 {renderInteractiveView()}
-            </div>
+    
+                    <div className="mt-4 flex flex-wrap items-center">
+                        {selectedVerb.options.map(option => (
+                            <button key={option.id} onClick={() => handleAddOption(option)} className="mr-2 mb-2 text-sm font-mono bg-paper-white border border-deep-charcoal/20 px-3 py-1.5 rounded-md hover:border-burnt-gold/50 hover:text-burnt-gold transition-colors">
+                                + {option.flag || option.description.split('.')[0]}
+                            </button>
+                        ))}
+                    </div>
+                
+                    {commandString && (
+                        <div className="mt-6 font-mono text-sm bg-deep-charcoal text-paper-white p-4 rounded-md flex items-center justify-between">
+                            <pre className="overflow-x-auto"><code>{commandString}</code></pre>
+                            <div className="flex items-center space-x-4 pl-4">
+                                <button onClick={handleCopyCommand}><CopyIcon copied={copied} /></button>
+                                <button onClick={handleClearCommand}><TrashIcon /></button>
+                            </div>
+                        </div>
+                    )}
+                
+                    <div className="mt-8 flex-grow">
+                        {liveExplanation && (
+                            <div className="border-l-4 border-burnt-gold/50 pl-6 py-2">
+                                <h2 className="text-lg font-bold text-deep-charcoal flex items-center mb-2"><LearningIcon /> <span className="ml-2">Live Scribe</span></h2>
+                                <div className="prose prose-sm text-stone-gray max-w-none">
+                                    {isLoadingExplanation ? <p>Thinking...</p> : <p dangerouslySetInnerHTML={{ __html: liveExplanation.replace(/\n/g, '<br />') }} />}
+                                </div>
+                            </div>
+                        )}
+                         {renderInteractiveView()}
+                    </div>
+                </div>
+            ) : (
+                <WelcomePanel />
+            )}
         </div>
     );
     
