@@ -136,3 +136,13 @@ export const TAGS = {
 };
 
 export const HEAD = '12';
+
+// --- REMOTE REPOSITORY SIMULATION ---
+
+// Remote history is a subset of local history, as if it hasn't been updated yet.
+export const REMOTE_COMMIT_HISTORY: Commit[] = COMMIT_HISTORY.slice(4);
+
+export const REMOTE_BRANCHES = {
+    'main': '6',
+    'develop': '8', // Remote develop is behind local develop
+};

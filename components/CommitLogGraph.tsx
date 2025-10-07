@@ -4,6 +4,7 @@ import type { Commit } from '../types';
 interface CommitLogGraphProps {
     commits: Commit[];
     branches: Record<string, string>;
+    remoteBranches: Record<string, string>;
     head: string;
     showGraph: boolean;
     onCommitSelect: (commit: Commit | null) => void;
@@ -31,10 +32,11 @@ const DeleteBranchIcon = ({ className = "w-4 h-4" }: { className?: string }) => 
 );
 
 
-export const CommitLogGraph: React.FC<CommitLogGraphProps> = ({ commits, branches, head, showGraph, onCommitSelect, selectedCommitId, onCreateBranch, onSwitchBranch, onDeleteBranch }) => {
+export const CommitLogGraph: React.FC<CommitLogGraphProps> = ({ commits, branches, remoteBranches, head, showGraph, onCommitSelect, selectedCommitId, onCreateBranch, onSwitchBranch, onDeleteBranch }) => {
     
     const [contextMenu, setContextMenu] = useState<{ x: number; y: number; commit: Commit } | null>(null);
-    const commitMap = new Map(commits.map(c => [c.id, c]));
+    // FIX: Add explicit type annotation for the Map to ensure correct type inference for commits.
+    const commitMap = new Map<string, Commit>(commits.map(c => [c.id, c]));
 
     useEffect(() => {
         const handleClick = () => setContextMenu(null);
@@ -64,6 +66,7 @@ export const CommitLogGraph: React.FC<CommitLogGraphProps> = ({ commits, branche
     };
 
     const branchHeads = Object.entries(branches);
+    const remoteBranchHeads = Object.entries(remoteBranches);
     
     return (
         <div className="relative mt-8 font-mono text-sm select-none" style={{ height: commits.length * ROW_HEIGHT }}>
@@ -148,6 +151,9 @@ export const CommitLogGraph: React.FC<CommitLogGraphProps> = ({ commits, branche
                                         </div>
                                     )
                                 })}
+                                {remoteBranchHeads.filter(([_, commitId]) => commitId === commit.id).map(([name]) => (
+                                    <span key={name} className="ml-4 text-xs font-bold text-stone-gray bg-stone-gray/10 px-2 py-0.5 rounded-full">{`origin/${name}`}</span>
+                                ))}
                                  {isHead && (
                                      <span className="ml-4 text-xs font-bold text-white bg-burnt-gold px-2 py-0.5 rounded-full">
                                         HEAD

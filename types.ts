@@ -136,3 +136,9 @@ export interface Stash {
     files: RepoFile[];
     createdAt: string;
 }
+
+// New type for AI Sage chat
+export interface SageMessage {
+  role: 'user' | 'sage';
+  content: string;
+}

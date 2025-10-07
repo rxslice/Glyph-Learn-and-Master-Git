@@ -211,7 +211,7 @@ const ShortlogIcon = ({ className = "w-6 h-6" }: { className?: string }) => (
 
 const GrepIcon = ({ className = "w-6 h-6" }: { className?: string }) => (
     <svg xmlns="http://www.w3.org/2000/svg" className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 15h6" />
     </svg>
 );
@@ -360,6 +360,7 @@ export const GIT_COMMANDS: GitVerb[] = [
     description: 'Record changes to the repository.',
     longDescription: "The 'commit' command saves your staged changes. It's like creating a snapshot of your repository at a specific point in time. Each commit has a unique ID and a message describing the changes.",
     options: [
+      { id: 'm', flag: '-m', description: "Set the commit message.", longDescription: "The '-m' flag allows you to provide the commit message directly on the command line, avoiding the need for a text editor.", type: 'string' as const, placeholder: "Your commit message", requiresValue: true },
       { id: 'amend', flag: '--amend', description: "Amend the previous commit.", longDescription: "The '--amend' flag modifies the most recent commit. You can change its message or add/remove files from it. Use with caution on shared branches.", type: 'boolean' as const, requiresValue: false },
       { id: 'a', flag: '-a', description: "Stage and commit all.", longDescription: "Automatically stage all modified and deleted files (but not new files) before committing.", type: 'boolean' as const, requiresValue: false },
     ],

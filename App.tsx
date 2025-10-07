@@ -1,7 +1,9 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import type { ConstructedGlyph, GitOption, GitVerb, RebaseCommit, Commit, BlameLine, RepoFile, DiffLine, Hunk, ReflogEntry, GrepResult, BisectStatus, Worktree, Remote, Stash } from './types';
+
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { GoogleGenAI, GenerateContentResponse } from "@google/genai";
+import type { ConstructedGlyph, GitOption, GitVerb, RebaseCommit, Commit, BlameLine, RepoFile, DiffLine, Hunk, ReflogEntry, GrepResult, BisectStatus, Worktree, Remote, Stash, SageMessage } from './types';
 import { GIT_COMMANDS } from './data/gitCommands';
-import { COMMIT_HISTORY as INITIAL_COMMIT_HISTORY, BRANCHES as INITIAL_BRANCHES, HEAD as INITIAL_HEAD, TAGS as INITIAL_TAGS } from './data/commitHistory';
+import { COMMIT_HISTORY as INITIAL_COMMIT_HISTORY, BRANCHES as INITIAL_BRANCHES, HEAD as INITIAL_HEAD, TAGS as INITIAL_TAGS, REMOTE_BRANCHES as INITIAL_REMOTE_BRANCHES, REMOTE_COMMIT_HISTORY as INITIAL_REMOTE_COMMITS } from './data/commitHistory';
 import { GlyphComponent } from './components/GlyphComponent';
 import { InteractiveRebase } from './components/InteractiveRebase';
 import { CommitLogGraph } from './components/CommitLogGraph';
@@ -13,6 +15,11 @@ import { BranchView } from './components/BranchView';
 
 
 const MAX_HISTORY = 10;
+let ai: GoogleGenAI | null = null;
+if (process.env.API_KEY) {
+    ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+}
+
 
 // --- Dummy Data ---
 const DUMMY_COMMITS: RebaseCommit[] = [
@@ -132,6 +139,31 @@ const DUMMY_GREP_DATA: GrepResult[] = [
     { path: 'App.tsx', lineNumber: 945, content: `const isMergeCommit = commit.parents.length > 1;`},
 ];
 
+const DUMMY_BISECT_STATUS: BisectStatus = {
+    state: 'BISECTING',
+    start: 'v0.9.0',
+    end: 'HEAD',
+    current: 'e4f5g6h',
+    goodCommits: ['g5h6i7j', 'i7j8k9l'],
+    badCommits: ['c2e8a4a'],
+    steps: 2,
+    remaining: 4,
+};
+
+const DUMMY_WORKTREES: Worktree[] = [
+    { path: '/path/to/glyph', head: 'c2e8a4a', branch: 'develop', isMain: true },
+    { path: '/path/to/glyph-hotfix', head: 'd0e1f2a', branch: 'hotfix/bug-123' },
+];
+
+const DUMMY_REMOTES: Remote[] = [
+    { name: 'origin', url: 'git@github.com:user/glyph.git' },
+    { name: 'upstream', url: 'git@github.com:opensource/glyph.git' },
+];
+
+const DUMMY_STASHES: Stash[] = [
+    { id: 'stash@{0}', message: 'WIP on feat/new-button: 8f3a2b1 style: Add button styles', createdAt: '2 hours ago', files: [] },
+    { id: 'stash@{1}', message: 'WIP on develop: c2e8a4a Merge branch \'feat/new-feature\'', createdAt: '1 day ago', files: [] },
+];
 
 const SUGGESTED_COMMANDS: Record<string, { command: string, description: string }[]> = {
     add: [
@@ -317,6 +349,24 @@ const LearningIcon = () => (
     </svg>
 );
 
+const SageIcon = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l-3 4-3-4m0 18l3-4 3 4m9-11h-4m2-2v4" />
+    </svg>
+);
+
+const MenuIcon = ({ className = "w-6 h-6" }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+    </svg>
+);
+
+const CloseIcon = ({ className = "w-6 h-6" }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+    </svg>
+);
+
 // --- View Components (defined here to avoid new files) ---
 const ReflogView: React.FC<{ entries: ReflogEntry[] }> = ({ entries }) => (
     <div className="mt-6 border border-deep-charcoal/10 rounded-lg p-4 animate-fade-in-slide-up">
@@ -326,1126 +376,629 @@ const ReflogView: React.FC<{ entries: ReflogEntry[] }> = ({ entries }) => (
                 <div key={entry.id} className="flex items-center p-2 rounded-md bg-deep-charcoal/5">
                     <span className="font-bold text-burnt-gold w-20 flex-shrink-0">{entry.ref}</span>
                     <span className="text-olive-green w-24 flex-shrink-0">{entry.action}</span>
-                    <span className="text-deep-charcoal truncate">{entry.message}</span>
+                    <span className="truncate">{entry.message}</span>
                 </div>
             ))}
         </div>
     </div>
 );
 
-const ShortlogView: React.FC<{ commits: Commit[] }> = ({ commits }) => {
-    const commitsByAuthor = useMemo(() => {
-        return commits.reduce<Record<string, Commit[]>>((acc, commit) => {
-            (acc[commit.author] = acc[commit.author] || []).push(commit);
-            return acc;
-        }, {});
-    }, [commits]);
-
-    return (
-         <div className="mt-6 border border-deep-charcoal/10 rounded-lg p-4 animate-fade-in-slide-up">
-            <h3 className="font-bold text-lg text-deep-charcoal mb-4">Author Summary (shortlog)</h3>
-            <div className="space-y-4">
-                {Object.entries(commitsByAuthor).map(([author, authorCommits]) => (
-                    <div key={author}>
-                        <h4 className="font-bold font-sans text-deep-charcoal mb-2">{author} ({authorCommits.length}):</h4>
-                        <ul className="font-mono text-xs text-deep-charcoal space-y-1 pl-4">
-                            {authorCommits.map(commit => (
-                                <li key={commit.id} className="list-disc list-inside truncate">
-                                    {commit.message}
-                                </li>
-                            ))}
-                        </ul>
+const GrepView: React.FC<{ results: GrepResult[], pattern: string }> = ({ results, pattern }) => (
+    <div className="mt-6 border border-deep-charcoal/10 rounded-lg p-4 animate-fade-in-slide-up">
+        <h3 className="font-bold text-lg text-deep-charcoal mb-4">Grep Results for "<span className="text-burnt-gold">{pattern}</span>"</h3>
+        <div className="font-mono text-xs text-deep-charcoal space-y-2 max-h-96 overflow-y-auto">
+            {results.map((result, i) => (
+                <div key={i} className="p-2 rounded-md bg-deep-charcoal/5">
+                    <div className="flex items-center text-olive-green">
+                        <span>{result.path}</span>
+                        <span className="mx-2">:</span>
+                        <span className="font-bold text-burnt-gold">{result.lineNumber}</span>
                     </div>
-                ))}
-            </div>
-        </div>
-    );
-};
-
-const GrepView: React.FC<{ results: GrepResult[]; pattern: string; ignoreCase: boolean }> = ({ results, pattern, ignoreCase }) => {
-    const groupedResults = useMemo(() => {
-        return results.reduce<Record<string, GrepResult[]>>((acc, result) => {
-            (acc[result.path] = acc[result.path] || []).push(result);
-            return acc;
-        }, {});
-    }, [results]);
-
-    const highlight = (text: string) => {
-        if (!pattern) return <>{text}</>;
-        try {
-            const regex = new RegExp(`(${pattern})`, ignoreCase ? 'gi' : 'g');
-            const parts = text.split(regex);
-            return (
-                <>
-                    {parts.map((part, i) =>
-                        regex.test(part) ? <span key={i} className="bg-burnt-gold/40 rounded-sm px-0.5 py-0.5">{part}</span> : <span key={i}>{part}</span>
-                    )}
-                </>
-            );
-        } catch (e) {
-            // Invalid regex, return plain text
-            return <>{text}</>;
-        }
-    };
-
-    return (
-        <div className="mt-6 border border-deep-charcoal/10 rounded-lg animate-fade-in-slide-up">
-            <div className="p-4">
-                <h3 className="font-bold text-lg text-deep-charcoal mb-4">Grep Results for "<span className="text-burnt-gold">{pattern}</span>"</h3>
-                <div className="space-y-4 font-mono text-xs">
-                    {Object.entries(groupedResults).map(([path, pathResults]) => (
-                        <div key={path}>
-                            <h4 className="font-bold text-olive-green mb-2">{path}</h4>
-                            <div className="space-y-1 pl-4">
-                                {pathResults.map((result, i) => (
-                                    <div key={`${path}-${result.lineNumber}-${i}`} className="flex">
-                                        <span className="w-10 flex-shrink-0 text-right pr-4 text-stone-gray">{result.lineNumber}</span>
-                                        <pre className="truncate text-deep-charcoal"><code>{highlight(result.content)}</code></pre>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    ))}
-                </div>
-            </div>
-        </div>
-    );
-};
-
-const DescribeView: React.FC<{ result: string | null }> = ({ result }) => (
-    <div className="mt-6 border border-deep-charcoal/10 rounded-lg p-4 animate-fade-in-slide-up bg-paper-white">
-        <h3 className="font-bold text-lg text-deep-charcoal mb-2">Describe Result</h3>
-        {result ? (
-            <p className="font-mono text-burnt-gold bg-deep-charcoal/5 p-3 rounded-md">{result}</p>
-        ) : (
-            <p className="text-stone-gray">No description available. Try describing a commit closer to a tag.</p>
-        )}
-    </div>
-);
-
-const BisectView: React.FC<{ status: BisectStatus; onGood: () => void; onBad: () => void; onReset: () => void; currentCommit: Commit | undefined }> = ({ status, onGood, onBad, onReset, currentCommit }) => (
-    <div className="mt-6 border border-deep-charcoal/10 rounded-lg p-4 animate-fade-in-slide-up bg-paper-white">
-        <h3 className="font-bold text-lg text-deep-charcoal mb-2">Bisect Status</h3>
-        {status.state === 'INACTIVE' && <p className="text-stone-gray">Bisect session is not active. Use `bisect start` to begin.</p>}
-        {status.state === 'BISECTING' && currentCommit && (
-             <div className="space-y-4">
-                <div className="text-center bg-deep-charcoal/5 p-4 rounded-lg">
-                    <p className="text-sm text-stone-gray">Revisions left to test (roughly):</p>
-                    <p className="text-3xl font-bold text-burnt-gold">{status.remaining}</p>
-                </div>
-                <div>
-                    <p className="text-sm font-semibold mb-1">Currently testing commit:</p>
-                    <div className="font-mono text-sm bg-paper-off-white p-3 rounded-md border border-deep-charcoal/10">
-                        <p><span className="text-stone-gray">{currentCommit.hash}</span> - {currentCommit.message}</p>
-                        <p className="text-xs text-stone-gray">by {currentCommit.author} on {new Date(currentCommit.date).toLocaleDateString()}</p>
-                    </div>
-                </div>
-                <div className="flex items-center justify-center space-x-4">
-                    <button onClick={onGood} className="px-6 py-2 font-bold bg-olive-green/20 text-olive-green rounded-md hover:bg-olive-green/30 transition-colors">Good</button>
-                    <button onClick={onBad} className="px-6 py-2 font-bold bg-red-500/10 text-red-600 rounded-md hover:bg-red-500/20 transition-colors">Bad</button>
-                </div>
-             </div>
-        )}
-        {status.state === 'DONE' && (
-            <div className="text-center p-4 bg-olive-green/10 rounded-lg">
-                <p className="font-semibold text-deep-charcoal">Bisect complete!</p>
-                <p className="text-sm mt-1">The first bad commit is:</p>
-                <p className="font-mono text-burnt-gold mt-2">{status.firstBadCommit}</p>
-            </div>
-        )}
-         {(status.state === 'BISECTING' || status.state === 'DONE') && (
-            <button onClick={onReset} className="w-full mt-4 text-sm text-stone-gray hover:text-deep-charcoal underline">Reset Bisect Session</button>
-         )}
-    </div>
-);
-
-const WorktreeView: React.FC<{ worktrees: Worktree[], onAdd: (path: string, branch: string) => void, onRemove: (path: string) => void }> = ({ worktrees, onAdd, onRemove }) => {
-    const [path, setPath] = useState('');
-    const [branch, setBranch] = useState('');
-
-    const handleAdd = (e: React.FormEvent) => {
-        e.preventDefault();
-        if (path.trim() && branch.trim()) {
-            onAdd(path, branch);
-            setPath('');
-            setBranch('');
-        }
-    };
-
-    return (
-        <div className="mt-6 border border-deep-charcoal/10 rounded-lg p-4 animate-fade-in-slide-up space-y-6">
-            <div>
-                <h3 className="font-bold text-lg text-deep-charcoal mb-4">Worktrees</h3>
-                <div className="space-y-2">
-                    {worktrees.map(wt => (
-                        <div key={wt.path} className="flex items-center justify-between p-2 rounded-md bg-deep-charcoal/5 font-mono text-sm">
-                            <div>
-                                <span className="font-bold text-deep-charcoal">{wt.path}</span>
-                                <span className="text-stone-gray ml-4">{wt.head}</span>
-                                {wt.branch && <span className="ml-4 text-xs font-bold text-white bg-olive-green px-2 py-0.5 rounded-full">{wt.branch}</span>}
-                            </div>
-                            {!wt.isMain && <button onClick={() => onRemove(wt.path)} className="text-xs text-red-600 hover:underline">Remove</button>}
-                        </div>
-                    ))}
-                </div>
-            </div>
-             <form onSubmit={handleAdd} className="border-t border-deep-charcoal/10 pt-6">
-                <h4 className="font-bold text-md text-deep-charcoal mb-3">Add New Worktree</h4>
-                <div className="flex items-end space-x-3">
-                    <div className="flex-grow">
-                        <label className="block text-xs font-medium text-stone-gray mb-1">Path</label>
-                        <input
-                            type="text" value={path} onChange={e => setPath(e.target.value)}
-                            placeholder="../glyph-hotfix" required
-                            className="w-full font-mono text-sm bg-paper-white px-3 py-2 border border-deep-charcoal/20 rounded-md focus:outline-none focus:ring-2 focus:ring-burnt-gold/50"
-                        />
-                    </div>
-                     <div className="flex-grow">
-                        <label className="block text-xs font-medium text-stone-gray mb-1">Branch</label>
-                        <input
-                            type="text" value={branch} onChange={e => setBranch(e.target.value)}
-                            placeholder="hotfix-branch" required
-                            className="w-full font-mono text-sm bg-paper-white px-3 py-2 border border-deep-charcoal/20 rounded-md focus:outline-none focus:ring-2 focus:ring-burnt-gold/50"
-                        />
-                    </div>
-                    <button type="submit" className="bg-deep-charcoal text-paper-white px-4 py-2 rounded-md hover:bg-deep-charcoal/90 transition-colors font-bold text-sm h-[42px]">Add</button>
-                </div>
-            </form>
-        </div>
-    );
-};
-
-const ShowView: React.FC<{ commit: Commit | null }> = ({ commit }) => {
-    if (!commit) {
-        return (
-            <div className="mt-6 border border-deep-charcoal/10 rounded-lg p-4 animate-fade-in-slide-up bg-paper-white">
-                <p className="text-stone-gray">No commit selected or found.</p>
-            </div>
-        );
-    }
-
-    const diffData = getDummyDiffForCommit(commit.id);
-
-    return (
-        <div className="mt-6 border border-deep-charcoal/10 rounded-lg animate-fade-in-slide-up bg-paper-white overflow-hidden">
-            <div className="p-4 border-b border-deep-charcoal/10">
-                <p className="font-mono text-sm text-burnt-gold">commit {commit.hash}</p>
-                <p className="text-sm mt-2">Author: <span className="font-semibold">{commit.author}</span></p>
-                <p className="text-sm">Date: <span className="font-semibold">{new Date(commit.date).toUTCString()}</span></p>
-                <p className="mt-4 font-sans text-base text-deep-charcoal">{commit.message}</p>
-            </div>
-            <div className="font-mono text-xs text-deep-charcoal overflow-x-auto">
-                <table className="w-full">
-                    <tbody>
-                        {diffData.map((line, index) => (
-                            <tr key={index} className={line.type === 'added' ? 'bg-olive-green/10' : line.type === 'removed' ? 'bg-red-500/10' : ''}>
-                                <td className="p-1 w-5 text-center text-stone-gray/80 select-none">{line.type === 'added' ? '+' : line.type === 'removed' ? '-' : ' '}</td>
-                                <td className="p-1 w-full"><pre className="whitespace-pre-wrap"><code>{line.content}</code></pre></td>
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    );
-};
-
-const TagView: React.FC<{ tags: Record<string, string>; commits: Commit[], onCreate: (name: string, commitHash: string) => void; onDelete: (name: string) => void }> = ({ tags, commits, onCreate, onDelete }) => {
-    const [tagName, setTagName] = useState('');
-    const [commitHash, setCommitHash] = useState('');
-    
-    const handleCreate = (e: React.FormEvent) => {
-        e.preventDefault();
-        if(tagName.trim() && commitHash.trim()) {
-            onCreate(tagName, commitHash);
-            setTagName('');
-            setCommitHash('');
-        }
-    }
-    
-    return (
-        <div className="mt-6 border border-deep-charcoal/10 rounded-lg p-4 animate-fade-in-slide-up space-y-6">
-            <div>
-                <h3 className="font-bold text-lg text-deep-charcoal mb-4">Tags</h3>
-                 <div className="space-y-2">
-                    {Object.entries(tags).map(([name, commitId]) => (
-                        <div key={name} className="group flex items-center justify-between p-2 rounded-md bg-deep-charcoal/5 font-mono text-sm">
-                             <div>
-                                <span className="font-bold text-burnt-gold">{name}</span>
-                                <span className="text-stone-gray ml-4">points to {commits.find(c=>c.id === commitId)?.hash.substring(0,7) || 'N/A'}</span>
-                            </div>
-                            <button onClick={() => onDelete(name)} className="text-xs text-red-600 hover:underline opacity-0 group-hover:opacity-100 transition-opacity">Delete</button>
-                        </div>
-                    ))}
-                </div>
-            </div>
-             <form onSubmit={handleCreate} className="border-t border-deep-charcoal/10 pt-6">
-                <h4 className="font-bold text-md text-deep-charcoal mb-3">Create New Tag</h4>
-                 <div className="flex items-end space-x-3">
-                     <div className="flex-grow">
-                        <label className="block text-xs font-medium text-stone-gray mb-1">Tag Name</label>
-                        <input type="text" value={tagName} onChange={e => setTagName(e.target.value)} placeholder="v1.1.0" required className="w-full font-mono text-sm bg-paper-white px-3 py-2 border border-deep-charcoal/20 rounded-md focus:outline-none focus:ring-2 focus:ring-burnt-gold/50" />
-                    </div>
-                     <div className="flex-grow">
-                        <label className="block text-xs font-medium text-stone-gray mb-1">Commit Hash or Ref</label>
-                        <input type="text" value={commitHash} onChange={e => setCommitHash(e.target.value)} placeholder="a1b2c3d or main" required className="w-full font-mono text-sm bg-paper-white px-3 py-2 border border-deep-charcoal/20 rounded-md focus:outline-none focus:ring-2 focus:ring-burnt-gold/50" />
-                    </div>
-                    <button type="submit" className="bg-deep-charcoal text-paper-white px-4 py-2 rounded-md hover:bg-deep-charcoal/90 transition-colors font-bold text-sm h-[42px]">Create Tag</button>
-                </div>
-            </form>
-        </div>
-    );
-};
-
-const RemoteView: React.FC<{ remotes: Remote[], onAdd: (name: string, url: string) => void; onRemove: (name: string) => void; }> = ({ remotes, onAdd, onRemove }) => {
-    const [name, setName] = useState('');
-    const [url, setUrl] = useState('');
-    
-    const handleAdd = (e: React.FormEvent) => {
-        e.preventDefault();
-        if(name.trim() && url.trim()) {
-            onAdd(name, url);
-            setName('');
-            setUrl('');
-        }
-    }
-    
-    return (
-        <div className="mt-6 border border-deep-charcoal/10 rounded-lg p-4 animate-fade-in-slide-up space-y-6">
-            <div>
-                <h3 className="font-bold text-lg text-deep-charcoal mb-4">Remotes</h3>
-                 <div className="space-y-2">
-                    {remotes.map(remote => (
-                        <div key={remote.name} className="group flex items-center justify-between p-2 rounded-md bg-deep-charcoal/5 font-mono text-sm">
-                             <div>
-                                <span className="font-bold text-deep-charcoal">{remote.name}</span>
-                                <span className="text-stone-gray ml-4">{remote.url}</span>
-                            </div>
-                            <button onClick={() => onRemove(remote.name)} className="text-xs text-red-600 hover:underline opacity-0 group-hover:opacity-100 transition-opacity">Remove</button>
-                        </div>
-                    ))}
-                </div>
-            </div>
-             <form onSubmit={handleAdd} className="border-t border-deep-charcoal/10 pt-6">
-                <h4 className="font-bold text-md text-deep-charcoal mb-3">Add New Remote</h4>
-                 <div className="flex items-end space-x-3">
-                     <div className="flex-grow">
-                        <label className="block text-xs font-medium text-stone-gray mb-1">Name</label>
-                        <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="upstream" required className="w-full font-mono text-sm bg-paper-white px-3 py-2 border border-deep-charcoal/20 rounded-md focus:outline-none focus:ring-2 focus:ring-burnt-gold/50" />
-                    </div>
-                     <div className="flex-grow">
-                        <label className="block text-xs font-medium text-stone-gray mb-1">URL</label>
-                        <input type="text" value={url} onChange={e => setUrl(e.target.value)} placeholder="https://github.com/..." required className="w-full font-mono text-sm bg-paper-white px-3 py-2 border border-deep-charcoal/20 rounded-md focus:outline-none focus:ring-2 focus:ring-burnt-gold/50" />
-                    </div>
-                    <button type="submit" className="bg-deep-charcoal text-paper-white px-4 py-2 rounded-md hover:bg-deep-charcoal/90 transition-colors font-bold text-sm h-[42px]">Add Remote</button>
-                </div>
-            </form>
-        </div>
-    );
-};
-
-const StashView: React.FC<{ stashes: Stash[], onApply: (id: string) => void, onPop: (id: string) => void, onDrop: (id: string) => void }> = ({ stashes, onApply, onPop, onDrop }) => {
-    if (stashes.length === 0) {
-        return (
-            <div className="mt-6 border border-deep-charcoal/10 rounded-lg p-4 animate-fade-in-slide-up bg-paper-white">
-                <p className="text-stone-gray text-center">No stashed changes.</p>
-            </div>
-        );
-    }
-    return (
-        <div className="mt-6 border border-deep-charcoal/10 rounded-lg p-4 animate-fade-in-slide-up space-y-3">
-            <h3 className="font-bold text-lg text-deep-charcoal mb-2">Stashed Changes</h3>
-            {stashes.map((stash, index) => (
-                <div key={stash.id} className="group flex items-center justify-between p-2 rounded-md bg-deep-charcoal/5 font-mono text-sm">
-                    <div>
-                        <span className="font-bold text-deep-charcoal">stash@&#123;{stashes.length - 1 - index}&#125;:</span>
-                        <span className="text-stone-gray ml-3">{stash.message}</span>
-                    </div>
-                    <div className="flex items-center space-x-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button onClick={() => onApply(stash.id)} className="text-xs font-bold hover:underline">Apply</button>
-                        <button onClick={() => onPop(stash.id)} className="text-xs font-bold hover:underline">Pop</button>
-                        <button onClick={() => onDrop(stash.id)} className="text-xs text-red-600 hover:underline">Drop</button>
-                    </div>
+                    <pre className="mt-1 whitespace-pre-wrap text-deep-charcoal/80"><code>{result.content}</code></pre>
                 </div>
             ))}
         </div>
-    );
-};
+    </div>
+);
 
-// --- Main App Component ---
-export default function App() {
-  const [command, setCommand] = useState<ConstructedGlyph[]>([]);
-  const [isLearningMode, setIsLearningMode] = useState(true);
-  const [history, setHistory] = useState<string[]>([]);
-  const [copied, setCopied] = useState(false);
-  const [rebaseCommits, setRebaseCommits] = useState<RebaseCommit[]>([]);
-  const [selectedCommit, setSelectedCommit] = useState<Commit | null>(null);
-  const [localConfig, setLocalConfig] = useState(DUMMY_LOCAL_CONFIG);
-  const [globalConfig, setGlobalConfig] = useState(DUMMY_GLOBAL_CONFIG);
-  const [repoState, setRepoState] = useState(() => {
-    try {
-        const savedState = localStorage.getItem('glyph-repo-state');
-        if (savedState) return JSON.parse(savedState);
-    } catch (e) { console.error("Failed to load repo state", e); }
-    return {
-        commits: INITIAL_COMMIT_HISTORY,
-        branches: INITIAL_BRANCHES,
-        tags: INITIAL_TAGS,
-        head: INITIAL_HEAD,
-        repoFiles: INITIAL_REPO_STATE,
-        stashes: [],
-        remotes: [{name: 'origin', url: 'git@github.com:user/glyph.git'}],
-    }
-  });
-  const { commits, branches, tags, head, repoFiles, stashes, remotes } = repoState;
-  
-  const setRepoStatePartial = (updater: (prevState: typeof repoState) => Partial<typeof repoState>) => {
-    setRepoState(prev => ({ ...prev, ...updater(prev) }));
-  };
+const BisectView: React.FC<{ status: BisectStatus }> = ({ status }) => (
+    <div className="mt-6 border border-deep-charcoal/10 rounded-lg p-4 animate-fade-in-slide-up">
+        <h3 className="font-bold text-lg text-deep-charcoal mb-4">Bisect Status</h3>
+        <div className="font-mono text-sm grid grid-cols-2 gap-4">
+            <div><span className="text-stone-gray">State:</span> <span className="font-bold">{status.state}</span></div>
+            <div><span className="text-stone-gray">Current:</span> <span className="font-bold text-burnt-gold">{status.current}</span></div>
+            <div><span className="text-stone-gray">Bad commit:</span> <span className="font-bold">{status.end}</span></div>
+            <div><span className="text-stone-gray">Good commit:</span> <span className="font-bold">{status.start}</span></div>
+            <div className="col-span-2"><span className="text-stone-gray">{status.remaining} revisions left to test after this ({status.steps} steps)</span></div>
+        </div>
+    </div>
+);
 
-  const [diffingFile, setDiffingFile] = useState<RepoFile | null>(null);
-  const [authorFilter, setAuthorFilter] = useState('');
-  const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc');
-  const [logBranches, setLogBranches] = useState<string[]>([]);
-  const [commandSearch, setCommandSearch] = useState('');
-  const [hoveredHistoryIndex, setHoveredHistoryIndex] = useState<number | null>(null);
-  const [hoveredOption, setHoveredOption] = useState<GitOption | null>(null);
-  const [describeResult, setDescribeResult] = useState<string | null>(null);
-  const [bisectStatus, setBisectStatus] = useState<BisectStatus>({ state: 'INACTIVE', goodCommits: [], badCommits: [] });
-  const [worktrees, setWorktrees] = useState<Worktree[]>([
-    { path: './', head: 'c2e8a4a', branch: 'develop', isMain: true },
-    { path: '../glyph-docs', head: 'f6d8b3c', branch: 'feat/new-feature' }
-  ]);
-  const [notifications, setNotifications] = useState<{id: number, message: string}[]>([]);
-  const [activeView, setActiveView] = useState<GitVerb['id'] | 'dashboard'>('dashboard');
+const WorktreeView: React.FC<{ worktrees: Worktree[] }> = ({ worktrees }) => (
+    <div className="mt-6 border border-deep-charcoal/10 rounded-lg p-4 animate-fade-in-slide-up">
+        <h3 className="font-bold text-lg text-deep-charcoal mb-4">Worktrees</h3>
+        <div className="font-mono text-sm space-y-2">
+            {worktrees.map(wt => (
+                <div key={wt.path} className="flex items-center p-2 rounded-md bg-deep-charcoal/5">
+                    <span className="w-1/3 truncate">{wt.path}{wt.isMain ? ' (main)' : ''}</span>
+                    <span className="w-1/4 text-burnt-gold">{wt.head}</span>
+                    <span className="w-1/3 text-olive-green">{wt.branch}</span>
+                </div>
+            ))}
+        </div>
+    </div>
+);
 
-  // --- State Persistence ---
-  useEffect(() => {
-    try {
-        localStorage.setItem('glyph-repo-state', JSON.stringify(repoState));
-    } catch (e) { console.error("Failed to save repo state", e); }
-  }, [repoState]);
+const RemoteView: React.FC<{ remotes: Remote[] }> = ({ remotes }) => (
+     <div className="mt-6 border border-deep-charcoal/10 rounded-lg p-4 animate-fade-in-slide-up">
+        <h3 className="font-bold text-lg text-deep-charcoal mb-4">Remotes</h3>
+        <div className="font-mono text-sm space-y-2">
+            {remotes.map(remote => (
+                <div key={remote.name} className="flex flex-col p-2 rounded-md bg-deep-charcoal/5">
+                    <span className="font-bold text-burnt-gold">{remote.name}</span>
+                    <span className="text-stone-gray">{remote.url}</span>
+                </div>
+            ))}
+        </div>
+    </div>
+);
 
-  useEffect(() => {
-    try {
-      const savedHistory = localStorage.getItem('glyph-history');
-      if (savedHistory) setHistory(JSON.parse(savedHistory));
-    } catch (error) { console.error("Failed to load history from localStorage", error); }
-  }, []);
-
-  useEffect(() => {
-    try {
-        localStorage.setItem('glyph-history', JSON.stringify(history));
-    } catch (error) { console.error("Failed to save history to localStorage", error); }
-  }, [history]);
-  
-  // --- UI State & Views ---
-  const currentVerb = command.length > 0 ? GIT_COMMANDS.find(v => v.id === command[0].verbId) : GIT_COMMANDS.find(v => v.id === activeView);
-  const isInteractiveRebase = activeView === 'rebase' && command.some(g => g.optionId === 'i');
-  const isLogView = activeView === 'log';
-  const isBlameView = activeView === 'blame' && command.some(g => g.optionId === 'file' && g.value);
-  const isConfigView = activeView === 'config';
-  const isStatusView = activeView === 'status';
-  const isBranchView = activeView === 'branch';
-  const isReflogView = activeView === 'reflog';
-  const isShortlogView = activeView === 'shortlog';
-  const isGrepView = activeView === 'grep' && command.some(g => g.optionId === 'pattern' && g.value);
-  const isDescribeView = activeView === 'describe';
-  const isBisectView = activeView === 'bisect';
-  const isWorktreeView = activeView === 'worktree';
-  const isShowView = activeView === 'show';
-  const isTagView = activeView === 'tag';
-  const isRemoteView = activeView === 'remote';
-  const isStashView = activeView === 'stash';
-
-  const addNotification = useCallback((message: string) => {
-    const id = Date.now();
-    setNotifications(prev => [...prev, { id, message }]);
-    setTimeout(() => {
-      setNotifications(prev => prev.filter(n => n.id !== id));
-    }, 3000);
-  }, []);
-
-  useEffect(() => {
-    if (isInteractiveRebase) {
-        setRebaseCommits(DUMMY_COMMITS);
-    } else {
-        setRebaseCommits([]);
-    }
-  }, [isInteractiveRebase]);
-  
-  useEffect(() => {
-    if (activeView !== 'log') {
-        setSelectedCommit(null);
-        setAuthorFilter('');
-        setSortOrder('desc');
-        setLogBranches([]);
-    }
-    if (activeView !== 'status') setDiffingFile(null);
-  }, [activeView]);
+const StashView: React.FC<{ stashes: Stash[] }> = ({ stashes }) => (
+    <div className="mt-6 border border-deep-charcoal/10 rounded-lg p-4 animate-fade-in-slide-up">
+        <h3 className="font-bold text-lg text-deep-charcoal mb-4">Stashes</h3>
+        <div className="font-mono text-sm space-y-2">
+            {stashes.map(stash => (
+                <div key={stash.id} className="flex items-center p-2 rounded-md bg-deep-charcoal/5">
+                    <span className="font-bold text-burnt-gold mr-4">{stash.id}:</span>
+                    <span className="truncate">{stash.message}</span>
+                </div>
+            ))}
+        </div>
+    </div>
+);
 
 
-  const addToHistory = useCallback((cmd: string) => {
-    if (!cmd.trim() || cmd === 'git') return;
-    setHistory(prev => {
-      const newHistory = [cmd, ...prev.filter(c => c !== cmd)];
-      return newHistory.slice(0, MAX_HISTORY);
-    });
-  }, []);
+const App: React.FC = () => {
+    // Command state
+    const [constructedGlyphs, setConstructedGlyphs] = useState<ConstructedGlyph[]>([]);
+    const [commandHistory, setCommandHistory] = useState<ConstructedGlyph[][]>([]);
+    const [selectedVerb, setSelectedVerb] = useState<GitVerb | null>(null);
 
-  const handleVerbSelect = (verb: GitVerb) => {
-    setActiveView(verb.id);
-    const newCommand: ConstructedGlyph[] = [{
-      instanceId: `verb-${Date.now()}`,
-      verbId: verb.id,
-      value: ''
-    }];
-    if (verb.id === 'log') {
-        newCommand.push({ instanceId: `option-${Date.now()}`, verbId: 'log', optionId: 'graph', value: '' });
-    }
-    if(verb.id === 'commit'){
-      // Don't set command for commit, the UI panel handles it
-    } else {
-       setCommand(newCommand);
-    }
-  };
+    // UI State
+    const [liveExplanation, setLiveExplanation] = useState('');
+    const [isLoadingExplanation, setIsLoadingExplanation] = useState(false);
+    const [copied, setCopied] = useState(false);
+    const [showCommandList, setShowCommandList] = useState(true);
+    const [sidebarOpen, setSidebarOpen] = useState(false);
+    const sageChatEndRef = useRef<HTMLDivElement>(null);
 
-  const handleAddOption = (option: GitOption) => {
-    if (!command.length) return;
-    if(option.type === 'boolean' && command.some(g => g.optionId === option.id)) return;
-    setCommand(prev => [...prev, {
-      instanceId: `option-${Date.now()}`,
-      verbId: prev[0].verbId,
-      optionId: option.id,
-      value: option.choices?.[0] || (option.type === 'string' && !option.requiresValue ? option.placeholder || '' : '')
-    }]);
-  };
+    // Simulator State
+    const [rebaseCommits, setRebaseCommits] = useState(DUMMY_COMMITS);
+    const [commitHistory, setCommitHistory] = useState(INITIAL_COMMIT_HISTORY);
+    const [branches, setBranches] = useState(INITIAL_BRANCHES);
+    const [head, setHead] = useState(INITIAL_HEAD);
+    const [selectedCommitId, setSelectedCommitId] = useState<string | null>(null);
+    const [localConfig, setLocalConfig] = useState(DUMMY_LOCAL_CONFIG);
+    const [globalConfig, setGlobalConfig] = useState(DUMMY_GLOBAL_CONFIG);
+    const [repoFiles, setRepoFiles] = useState(INITIAL_REPO_STATE);
+    const [diffTarget, setDiffTarget] = useState<{ file: RepoFile; diffData: DiffLine[] } | null>(null);
 
-  const handleGlyphValueChange = (instanceId: string, newValue: string) => {
-    setCommand(prev => prev.map(g => g.instanceId === instanceId ? { ...g, value: newValue } : g));
-  };
-
-  const handleRemoveGlyph = (instanceId: string) => {
-    setCommand(prev => prev.filter(g => g.instanceId !== instanceId));
-  };
-  
-  const handleClearCommand = () => setCommand([]);
-
-  const generatedCommand = useMemo(() => {
-    if (command.length === 0) return '';
-    const verb = GIT_COMMANDS.find(v => v.id === command[0].verbId);
-    if (!verb) return '';
-
-    let parts = [`git ${verb.name}`];
+    // Sage AI Chat State
+    const [sageMessages, setSageMessages] = useState<SageMessage[]>([
+        { role: 'sage', content: 'Welcome! I am the Git Sage. Ask me anything about your current command or Git in general.' }
+    ]);
+    const [sageInput, setSageInput] = useState('');
+    const [isSageLoading, setIsSageLoading] = useState(false);
     
-    command.slice(1).forEach(glyph => {
-      const option = verb.options.find(o => o.id === glyph.optionId);
-      if (!option) return;
-      if (option.flag) parts.push(option.flag);
-      if (option.requiresValue && glyph.value) {
-          const value = glyph.value.includes(' ') ? `"${glyph.value}"` : glyph.value;
-          parts.push(value);
-      }
-    });
-    return parts.join(' ');
-  }, [command]);
+    // --- Command & Explanation Logic ---
 
-  const gitAliases = useMemo(() => {
-      const aliases: Record<string, string> = {};
-      const effectiveConfig = { ...DUMMY_GLOBAL_CONFIG, ...localConfig };
-      for (const key in effectiveConfig) {
-          if (key.startsWith('alias.')) aliases[key.substring(6)] = effectiveConfig[key];
-      }
-      return aliases;
-  }, [localConfig, DUMMY_GLOBAL_CONFIG]);
-  
-  const parseCommandToGlyphs = useCallback((cmd: string): ConstructedGlyph[] => {
-    let parts = cmd.match(/(?:[^\s"]+|"[^"]*")+/g) || [];
-    if (parts.length < 2 || parts[0] !== 'git') return [];
-
-    const potentialAlias = parts[1];
-    if (gitAliases[potentialAlias]) {
-        const expansion = gitAliases[potentialAlias].split(' ');
-        parts.splice(1, 1, ...expansion);
-    }
-
-    const verbName = parts[1];
-    const verb = GIT_COMMANDS.find(v => v.name === verbName);
-    if (!verb) return [];
-
-    const glyphs: ConstructedGlyph[] = [{ instanceId: `verb-${Date.now()}`, verbId: verb.id, value: '' }];
-    
-    let i = 2;
-    while (i < parts.length) {
-        const part = parts[i];
-        const option = verb.options.find(o => o.flag === part || o.choices?.includes(part));
-
-        if (option) {
-            let value = '';
-            if (option.requiresValue) {
-                if (i + 1 < parts.length && !parts[i+1].startsWith('-')) {
-                    i++;
-                    value = parts[i].replace(/"/g, '');
+    const commandString = useMemo(() => {
+        if (constructedGlyphs.length === 0) return '';
+        const commandParts = ['git', constructedGlyphs[0].value];
+        constructedGlyphs.slice(1).forEach(glyph => {
+            const option = selectedVerb?.options.find(o => o.id === glyph.optionId);
+            if (option) {
+                commandParts.push(option.flag);
+                if (option.requiresValue && glyph.value) {
+                    commandParts.push(option.type === 'string' ? `"${glyph.value}"` : glyph.value);
                 }
+            } else if (glyph.value) { // For positional arguments like commit hash or branch name
+                commandParts.push(glyph.value);
             }
-             if (option.type === 'choice') value = part;
-            glyphs.push({ instanceId: `option-${Date.now()}-${i}`, verbId: verb.id, optionId: option.id, value });
+        });
+        return commandParts.join(' ');
+    }, [constructedGlyphs, selectedVerb]);
+
+    const getExplanation = useCallback(async (currentCommand: string, verb: GitVerb | null, changedOption?: GitOption) => {
+        if (!ai || !verb) {
+            setLiveExplanation(verb?.longDescription || '');
+            return;
         }
-        i++;
-    }
-    return glyphs;
-  }, [gitAliases]);
 
-  const handleHistorySelect = (cmd: string) => {
-      const glyphs = parseCommandToGlyphs(cmd);
-      if (glyphs.length > 0) {
-          const verbId = glyphs[0].verbId;
-          const verb = GIT_COMMANDS.find(v => v.id === verbId);
-          if (verb) {
-              setActiveView(verb.id);
-              setCommand(glyphs);
-          }
-      }
-  };
-  const handleDeleteHistoryItem = (index: number) => setHistory(prev => prev.filter((_, i) => i !== index));
-  
-  const handleCopy = () => {
-    if (generatedCommand) {
-      navigator.clipboard.writeText(generatedCommand);
-      addToHistory(generatedCommand);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    }
-  };
-  
-    const currentBranchName = useMemo(() => Object.entries(branches).find(([, commitId]) => commitId === head)?.[0] || 'detached HEAD', [branches, head]);
+        setIsLoadingExplanation(true);
+        try {
+            let prompt = `You are a helpful Git expert. Explain the following git command concisely and clearly, as if teaching a beginner.
+            Command: \`${currentCommand}\`
 
-    const handleCreateBranch = useCallback((name: string, startPoint?: string) => {
-        const startCommit = startPoint ? (commits.find(c => c.hash.startsWith(startPoint))?.id || (branches[startPoint] || head)) : head;
-        setRepoStatePartial(prev => ({ branches: { ...prev.branches, [name]: startCommit } }));
-        addNotification(`Branch '${name}' created.`);
-    }, [branches, head, commits, addNotification]);
-  
-    const handleCreateBranchFromCommit = useCallback((commit: Commit) => {
-        const newBranchName = `feature/from-${commit.hash.substring(0,4)}`;
-        handleCreateBranch(newBranchName, commit.hash);
-        setActiveView('branch');
-    }, [handleCreateBranch]);
+            Focus on the overall purpose of the command first.
+            Then, briefly explain what each part does.
+
+            Base command ("${verb.name}") description: "${verb.longDescription}"
+            `;
+
+            if (changedOption) {
+                prompt += `
+                The user just added or changed this specific option:
+                - Flag: "${changedOption.flag}"
+                - Description: "${changedOption.longDescription}"
+                
+                Please make sure to emphasize what this specific part does in your explanation.`;
+            }
+
+             if (verb.name === 'rebase' && changedOption?.flag === '-i') {
+                prompt += `
+                Since this is an interactive rebase, explain the common actions a user can take: pick, reword, edit, squash, fixup, drop. Keep the descriptions brief.`;
+            }
+
+            const response: GenerateContentResponse = await ai.models.generateContent({
+                model: 'gemini-2.5-flash',
+                contents: prompt,
+            });
+            setLiveExplanation(response.text);
+        } catch (error) {
+            console.error("Error fetching explanation:", error);
+            setLiveExplanation("Sorry, I couldn't fetch an explanation for this command. Please check your API key and connection.");
+        } finally {
+            setIsLoadingExplanation(false);
+        }
+    }, []);
+
+    const handleGlyphChange = useCallback((instanceId: string, value: string) => {
+        const updatedGlyphs = constructedGlyphs.map(g => g.instanceId === instanceId ? { ...g, value } : g);
+        setConstructedGlyphs(updatedGlyphs);
+
+        const changedGlyph = updatedGlyphs.find(g => g.instanceId === instanceId);
+        const changedOption = selectedVerb?.options.find(o => o.id === changedGlyph?.optionId);
+        
+        // Rebuild command string for explanation to have the most up-to-date value
+        const currentCommand = `git ${updatedGlyphs.map(g => {
+            const opt = selectedVerb?.options.find(o => o.id === g.optionId);
+            if (opt) {
+                return `${opt.flag} ${opt.requiresValue ? `"${g.value}"` : ''}`.trim();
+            }
+            return g.value;
+        }).join(' ')}`;
+        
+        getExplanation(currentCommand, selectedVerb, changedOption);
+    }, [constructedGlyphs, selectedVerb, getExplanation]);
+
+    const handleSelectVerb = useCallback((verb: GitVerb) => {
+        setConstructedGlyphs([{ verbId: verb.id, value: verb.name, instanceId: `verb-${Date.now()}` }]);
+        setSelectedVerb(verb);
+        setShowCommandList(false);
+        setSidebarOpen(false);
+        setDiffTarget(null);
+        handleGlyphChange(`verb-${Date.now()}`, verb.name); // Initial explanation
+    }, [handleGlyphChange]);
+
+    const handleAddOption = useCallback((option: GitOption) => {
+        const newGlyph: ConstructedGlyph = {
+            verbId: selectedVerb!.id,
+            optionId: option.id,
+            value: option.type === 'choice' ? option.choices![0] : '',
+            instanceId: `option-${Date.now()}`
+        };
+        setConstructedGlyphs(prev => [...prev, newGlyph]);
+        handleGlyphChange(newGlyph.instanceId, newGlyph.value);
+    }, [selectedVerb, handleGlyphChange]);
+    
+    const handleRemoveGlyph = useCallback((instanceId: string) => {
+        const updatedGlyphs = constructedGlyphs.filter(g => g.instanceId !== instanceId);
+        setConstructedGlyphs(updatedGlyphs);
+         const currentCommand = `git ${updatedGlyphs.map(g => g.value).join(' ')}`;
+        getExplanation(currentCommand, selectedVerb);
+    }, [constructedGlyphs, selectedVerb, getExplanation]);
+
+    const handleClearCommand = useCallback(() => {
+        if (constructedGlyphs.length > 0 && commandHistory[0] !== constructedGlyphs) {
+            setCommandHistory(prev => [constructedGlyphs, ...prev].slice(0, MAX_HISTORY));
+        }
+        setConstructedGlyphs([]);
+        setSelectedVerb(null);
+        setLiveExplanation('');
+        setShowCommandList(true);
+        setDiffTarget(null);
+    }, [constructedGlyphs, commandHistory]);
+
+    const handleCopyCommand = useCallback(() => {
+        navigator.clipboard.writeText(commandString);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+    }, [commandString]);
+
+    const handleReuseCommand = useCallback((glyphs: ConstructedGlyph[]) => {
+        const verb = GIT_COMMANDS.find(v => v.id === glyphs[0].verbId);
+        if (verb) {
+            setSelectedVerb(verb);
+            setConstructedGlyphs(glyphs);
+            setShowCommandList(false);
+        }
+    }, []);
+
+     // --- Sage AI Chat Logic ---
+    const handleSageSubmit = useCallback(async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!sageInput.trim() || !ai) return;
+
+        const userMessage: SageMessage = { role: 'user', content: sageInput.trim() };
+        setSageMessages(prev => [...prev, userMessage]);
+        setSageInput('');
+        setIsSageLoading(true);
+
+        try {
+            const prompt = `You are a helpful and concise Git expert called "Sage". A user is building a Git command and has a question.
+            
+            Current command being built:
+            \`${commandString || 'Nothing yet.'}\`
+            
+            User's question:
+            "${userMessage.content}"
+            
+            Provide a clear, helpful, and brief answer. Use markdown for formatting if needed.`;
+            
+            const response: GenerateContentResponse = await ai.models.generateContent({
+                model: 'gemini-2.5-flash',
+                contents: prompt,
+            });
+
+            const sageResponse: SageMessage = {
+                role: 'sage',
+                content: response.text,
+            };
+            setSageMessages(prev => [...prev, sageResponse]);
+
+        } catch (error) {
+            console.error("Sage AI error:", error);
+            const errorMessage: SageMessage = {
+                role: 'sage',
+                content: "Sorry, I couldn't process that right now. Please try again.",
+            };
+            setSageMessages(prev => [...prev, errorMessage]);
+        } finally {
+            setIsSageLoading(false);
+        }
+    }, [sageInput, commandString]);
+
+    useEffect(() => {
+        sageChatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }, [sageMessages]);
+
+    // --- Interactive View Handlers ---
+    const handleCreateBranch = useCallback((commit: Commit) => {
+        const newBranchName = prompt(`Enter new branch name, starting from commit "${commit.hash.slice(0, 7)}":`);
+        if (newBranchName && !branches[newBranchName]) {
+            setBranches(prev => ({ ...prev, [newBranchName]: commit.id }));
+        } else if (newBranchName) {
+            alert('A branch with that name already exists.');
+        }
+    }, [branches]);
 
     const handleSwitchBranch = useCallback((branchName: string) => {
         if (branches[branchName]) {
-            setRepoStatePartial(() => ({ head: branches[branchName] }));
-            addNotification(`Switched to branch '${branchName}'.`);
+            setHead(branches[branchName]);
         }
-    }, [branches, addNotification]);
+    }, [branches]);
 
     const handleDeleteBranch = useCallback((branchName: string) => {
-        setRepoStatePartial(prev => {
-            const newBranches = {...prev.branches};
-            delete newBranches[branchName];
-            return { branches: newBranches };
-        });
-        addNotification(`Branch '${branchName}' deleted.`);
-    }, [addNotification]);
+        if (window.confirm(`Are you sure you want to delete the branch "${branchName}"?`)) {
+            setBranches(prev => {
+                const newBranches = { ...prev };
+                delete newBranches[branchName];
+                return newBranches;
+            });
+        }
+    }, []);
 
     const handleRenameBranch = useCallback((oldName: string, newName: string) => {
-        setRepoStatePartial(prev => {
-            const newBranches = {...prev.branches};
-            if (newBranches[oldName]) {
+        setBranches(prev => {
+            const newBranches = { ...prev };
+            if (newBranches[oldName] && !newBranches[newName]) {
                 newBranches[newName] = newBranches[oldName];
                 delete newBranches[oldName];
             }
-            return { branches: newBranches };
+            return newBranches;
         });
-        addNotification(`Branch '${oldName}' renamed to '${newName}'.`);
-    }, [addNotification]);
-
-    const handleConfigChange = useCallback((key: string, value: string, scope: 'local' | 'global') => {
-        if (scope === 'local') setLocalConfig(prev => ({...prev, [key]: value}));
-        else setGlobalConfig(prev => ({...prev, [key]: value}));
-        addNotification(`Config '${key}' set in ${scope} scope.`);
-    }, [addNotification]);
-
-    const handleStageFile = useCallback((path: string) => {
-        setRepoStatePartial(prev => ({ repoFiles: prev.repoFiles.map(f => f.path === path ? { ...f, status: 'staged', hunks: f.hunks?.map(h => ({ ...h, isStaged: true })) } : f) }));
-        addNotification(`Staged '${path}'.`);
-    }, [addNotification]);
-    
-    const handleStageAll = useCallback(() => {
-        setRepoStatePartial(prev => ({ repoFiles: prev.repoFiles.map(f => {
-            if (f.status === 'modified' || f.status === 'partially-staged' || f.status === 'untracked') {
-                return { ...f, status: 'staged', hunks: f.hunks?.map(h => ({ ...h, isStaged: true })) };
-            }
-            return f;
-        })}));
-        addNotification(`Staged all changes.`);
-    }, [addNotification]);
-
-    const handleUnstageFile = useCallback((path: string) => {
-        setRepoStatePartial(prev => ({ repoFiles: prev.repoFiles.map(f => {
-            if (f.path === path) {
-                const newStatus = f.type === 'new' ? 'untracked' : 'modified';
-                return { ...f, status: newStatus, hunks: f.hunks?.map(h => ({ ...h, isStaged: false })) };
-            }
-            return f;
-        })}));
-        addNotification(`Unstaged '${path}'.`);
-    }, [addNotification]);
-
-    const handleToggleHunk = useCallback((filePath: string, hunkId: string) => {
-        setRepoStatePartial(prev => ({ repoFiles: prev.repoFiles.map(file => {
-            if (file.path === filePath && file.hunks) {
-                const newHunks = file.hunks.map(hunk => hunk.id === hunkId ? { ...hunk, isStaged: !hunk.isStaged } : hunk);
-                const stagedCount = newHunks.filter(h => h.isStaged).length;
-                let newStatus: RepoFile['status'] = 'modified';
-                if (stagedCount === newHunks.length) newStatus = 'staged';
-                else if (stagedCount > 0) newStatus = 'partially-staged';
-                return { ...file, hunks: newHunks, status: newStatus };
-            }
-            return file;
-        })}));
     }, []);
 
-    const handleDiscardChanges = useCallback((path: string) => {
-        setRepoStatePartial(prev => ({ repoFiles: prev.repoFiles.filter(f => f.path !== path || f.status === 'staged') }));
-        addNotification(`Discarded changes in '${path}'.`);
-    }, [addNotification]);
-    
-    // --- NEW: Dynamic command simulations ---
-    const handleCommit = useCallback((message: string) => {
-        if (currentBranchName === 'detached HEAD') {
-            addNotification("Cannot commit in detached HEAD state.");
-            return;
+    const handleConfigChange = useCallback((key: string, value: string, scope: 'local' | 'global') => {
+        const setter = scope === 'local' ? setLocalConfig : setGlobalConfig;
+        setter(prev => ({...prev, [key]: value }));
+        // Also update the glyphs to reflect the change
+        const keyGlyph = constructedGlyphs.find(g => g.optionId === 'key');
+        const valueGlyph = constructedGlyphs.find(g => g.optionId === 'value');
+        const scopeGlyph = constructedGlyphs.find(g => g.optionId === 'global');
+        
+        let updatedGlyphs = [...constructedGlyphs];
+        if(keyGlyph) updatedGlyphs = updatedGlyphs.map(g => g.instanceId === keyGlyph.instanceId ? {...g, value: key} : g);
+        if(valueGlyph) updatedGlyphs = updatedGlyphs.map(g => g.instanceId === valueGlyph.instanceId ? {...g, value: value} : g);
+
+        const hasGlobalFlag = updatedGlyphs.some(g => g.optionId === 'global');
+        if (scope === 'global' && !hasGlobalFlag) {
+             const globalOption = selectedVerb?.options.find(o => o.id === 'global');
+             if(globalOption) updatedGlyphs.push({ verbId: selectedVerb!.id, optionId: 'global', value: '', instanceId: `option-${Date.now()}` });
+        } else if (scope === 'local' && hasGlobalFlag && scopeGlyph) {
+            updatedGlyphs = updatedGlyphs.filter(g => g.instanceId !== scopeGlyph.instanceId);
         }
-        const newCommit: Commit = {
-            id: `c${commits.length + 1}`,
-            hash: Math.random().toString(16).substring(2, 9),
-            parents: [head],
-            message,
-            author: 'Alice',
-            date: new Date().toISOString(),
-            row: -1, col: commits.find(c => c.id === head)?.col || 0,
-        };
-        const updatedCommits = [newCommit, ...commits].map((c, index) => ({...c, row: index}));
-        setRepoState(s => ({
-            ...s,
-            commits: updatedCommits,
-            branches: { ...s.branches, [currentBranchName]: newCommit.id },
-            head: newCommit.id,
-            repoFiles: s.repoFiles.filter(f => f.status !== 'staged')
+        
+        setConstructedGlyphs(updatedGlyphs);
+    }, [constructedGlyphs, selectedVerb]);
+
+    const handleStage = useCallback((filePath: string) => {
+        setRepoFiles(prev => prev.map(f => {
+            if (f.path === filePath) {
+                const newHunks = f.hunks?.map(h => ({ ...h, isStaged: true }));
+                return { ...f, status: f.type === 'new' ? 'staged' : 'staged', hunks: newHunks };
+            }
+            return f;
         }));
-        addNotification(`Commit ${newCommit.hash} created.`);
-        setActiveView('log');
-    }, [commits, head, currentBranchName, addNotification]);
-
-    useEffect(() => {
-        const verbId = command[0]?.verbId;
-        if (verbId === 'merge') {
-            const branchToMerge = command.find(g => g.optionId === 'branch')?.value;
-            if (branchToMerge && branches[branchToMerge] && currentBranchName !== 'detached HEAD') {
-                const sourceCommitId = branches[branchToMerge];
-                if (sourceCommitId === head) return;
-
-                const newCommit = {
-                    id: `c${commits.length + 1}`,
-                    hash: Math.random().toString(16).substring(2, 9),
-                    parents: [head, sourceCommitId].sort(),
-                    message: `Merge branch '${branchToMerge}' into ${currentBranchName}`,
-                    author: 'Alice', date: new Date().toISOString(), row: -1,
-                    col: commits.find(c => c.id === head)?.col || 0,
-                };
-                const updatedCommits = [newCommit, ...commits].map((c, i) => ({...c, row: i}));
-                setRepoState(s => ({
-                    ...s,
-                    commits: updatedCommits,
-                    branches: { ...s.branches, [currentBranchName]: newCommit.id },
-                    head: newCommit.id
-                }));
-                addNotification(`Merged branch '${branchToMerge}'.`);
-                handleClearCommand();
-                setActiveView('log');
-            }
-        } else if (verbId === 'cherry-pick') {
-            const commitToPickHash = command.find(g => g.optionId === 'commit')?.value;
-            const commitToPick = commits.find(c => c.hash.startsWith(commitToPickHash || ''));
-            if (commitToPick && currentBranchName !== 'detached HEAD') {
-                const newCommit = {
-                    id: `c${commits.length + 1}`,
-                    hash: Math.random().toString(16).substring(2, 9),
-                    parents: [head],
-                    message: commitToPick.message,
-                    author: 'Alice', date: new Date().toISOString(), row: -1,
-                    col: commits.find(c => c.id === head)?.col || 0,
-                };
-                const updatedCommits = [newCommit, ...commits].map((c, i) => ({...c, row: i}));
-                setRepoState(s => ({
-                    ...s,
-                    commits: updatedCommits,
-                    branches: { ...s.branches, [currentBranchName]: newCommit.id },
-                    head: newCommit.id
-                }));
-                addNotification(`Cherry-picked ${commitToPick.hash}.`);
-                handleClearCommand();
-            }
-        } else if (verbId === 'reset') {
-            const commitRef = command.find(g => g.optionId === 'commit-ref')?.value;
-            const targetCommit = commits.find(c => c.hash.startsWith(commitRef?.replace('HEAD~', '') || '')); // Simplified logic
-            if (targetCommit && currentBranchName !== 'detached HEAD') {
-                 setRepoState(s => ({
-                    ...s,
-                    branches: { ...s.branches, [currentBranchName]: targetCommit.id },
-                    head: targetCommit.id
-                }));
-                 addNotification(`Reset to ${targetCommit.hash}.`);
-                 handleClearCommand();
-            }
-        } else if (verbId === 'revert') {
-            const commitToRevertHash = command.find(g => g.optionId === 'commit')?.value;
-            const commitToRevert = commits.find(c => c.hash.startsWith(commitToRevertHash || ''));
-            if (commitToRevert && currentBranchName !== 'detached HEAD') {
-                const newCommit = {
-                     id: `c${commits.length + 1}`,
-                    hash: Math.random().toString(16).substring(2, 9),
-                    parents: [head],
-                    message: `Revert "${commitToRevert.message}"`,
-                    author: 'Alice', date: new Date().toISOString(), row: -1,
-                    col: commits.find(c => c.id === head)?.col || 0,
-                };
-                const updatedCommits = [newCommit, ...commits].map((c, i) => ({...c, row: i}));
-                setRepoState(s => ({
-                    ...s,
-                    commits: updatedCommits,
-                    branches: { ...s.branches, [currentBranchName]: newCommit.id },
-                    head: newCommit.id
-                }));
-                addNotification(`Reverted commit ${commitToRevert.hash}.`);
-                handleClearCommand();
-            }
-        }
-    }, [command, branches, commits, head, currentBranchName, addNotification]);
+    }, []);
     
-    const handleStashPush = useCallback(() => {
-        const filesToStash = repoFiles.filter(f => f.status === 'modified' || f.status === 'partially-staged' || f.status === 'untracked');
-        if (filesToStash.length === 0) {
-            addNotification("No local changes to save.");
-            return;
-        }
-        const newStash: Stash = {
-            id: `stash-${Date.now()}`,
-            message: `On ${currentBranchName}: WIP`,
-            files: filesToStash,
-            createdAt: new Date().toISOString(),
-        };
-        setRepoStatePartial(prev => ({
-            stashes: [newStash, ...prev.stashes],
-            repoFiles: prev.repoFiles.filter(f => f.status === 'staged')
+    const handleUnstage = useCallback((filePath: string) => {
+        setRepoFiles(prev => prev.map(f => {
+            if (f.path === filePath) {
+                const newHunks = f.hunks?.map(h => ({ ...h, isStaged: false }));
+                return { ...f, status: 'modified', hunks: newHunks };
+            }
+            return f;
         }));
-        addNotification("Saved working directory and index state.");
-    }, [repoFiles, currentBranchName, addNotification]);
+    }, []);
 
-    const handleStashApply = useCallback((id: string) => {
-        const stash = stashes.find(s => s.id === id);
-        if (!stash) return;
-        // simplistic apply: just add files back. a real implementation would handle conflicts.
-        setRepoStatePartial(prev => ({ repoFiles: [...prev.repoFiles, ...stash.files] }));
-        addNotification(`Applied stash '${stash.message}'.`);
-    }, [stashes, addNotification]);
+    const handleViewDiff = useCallback((file: RepoFile) => {
+        setDiffTarget({ file, diffData: getDummyDiffForCommit(head) });
+    }, [head]);
 
-    const handleStashPop = useCallback((id: string) => {
-        handleStashApply(id);
-        setRepoStatePartial(prev => ({ stashes: prev.stashes.filter(s => s.id !== id) }));
-    }, [handleStashApply]);
+    const handleToggleHunkStaging = useCallback((filePath: string, hunkId: string) => {
+        setRepoFiles(prev => prev.map(f => {
+            if (f.path === filePath && f.hunks) {
+                const newHunks = f.hunks.map(h => h.id === hunkId ? { ...h, isStaged: !h.isStaged } : h);
+                const allStaged = newHunks.every(h => h.isStaged);
+                const noneStaged = newHunks.every(h => !h.isStaged);
+                const newStatus = allStaged ? 'staged' : (noneStaged ? 'modified' : 'partially-staged');
+                return { ...f, status: newStatus, hunks: newHunks };
+            }
+            return f;
+        }));
+    }, []);
 
-    const handleStashDrop = useCallback((id: string) => {
-        setRepoStatePartial(prev => ({ stashes: prev.stashes.filter(s => s.id !== id) }));
-        addNotification("Stash dropped.");
-    }, [addNotification]);
-
-    const handleCreateTag = useCallback((name: string, commitRef: string) => {
-        const targetCommit = commits.find(c => c.hash.startsWith(commitRef)) || commits.find(c => c.id === branches[commitRef]) || commits.find(c => c.id === head);
-        if (targetCommit) {
-            setRepoStatePartial(prev => ({ tags: { ...prev.tags, [name]: targetCommit.id } }));
-            addNotification(`Tag '${name}' created at ${targetCommit.hash.substring(0,7)}.`);
-        } else {
-            addNotification(`Error: Could not find commit for '${commitRef}'.`);
+    const handleDiscardChanges = useCallback((filePath: string) => {
+        if (window.confirm(`Are you sure you want to discard all changes for ${filePath}? This cannot be undone.`)) {
+            setRepoFiles(prev => prev.filter(f => f.path !== filePath));
         }
-    }, [commits, branches, head, addNotification]);
-    
-    const handleDeleteTag = useCallback((name: string) => {
-        setRepoStatePartial(prev => {
-            const newTags = { ...prev.tags };
-            delete newTags[name];
-            return { tags: newTags };
-        });
-        addNotification(`Tag '${name}' deleted.`);
-    }, [addNotification]);
+    }, []);
 
-    const handleAddRemote = useCallback((name: string, url: string) => {
-        setRepoStatePartial(prev => ({ remotes: [...prev.remotes, { name, url }] }));
-        addNotification(`Remote '${name}' added.`);
-    }, [addNotification]);
+    const handleCloseDiff = useCallback(() => setDiffTarget(null), []);
 
-    const handleRemoveRemote = useCallback((name: string) => {
-        setRepoStatePartial(prev => ({ remotes: prev.remotes.filter(r => r.name !== name) }));
-        addNotification(`Remote '${name}' removed.`);
-    }, [addNotification]);
+    // --- Rendering Logic ---
 
-    // --- Memoized Derived State ---
-    const filteredCommits = useMemo(() => {
-        let currentCommits: Commit[] = [...commits];
-        if (authorFilter.trim()) currentCommits = currentCommits.filter(c => c.author.toLowerCase().includes(authorFilter.trim().toLowerCase()));
-        if (sortOrder === 'asc') currentCommits.reverse();
-        return currentCommits;
-    }, [commits, authorFilter, sortOrder]);
-    
-    const filteredCommands = useMemo(() => {
-        if (!commandSearch.trim()) return GIT_COMMANDS;
-        return GIT_COMMANDS.filter(verb => verb.name.toLowerCase().includes(commandSearch.toLowerCase()) || verb.description.toLowerCase().includes(commandSearch.toLowerCase()));
-    }, [commandSearch]);
-    
-    const lastCommit = useMemo(() => commits.find(c => c.id === head) || commits[0], [head, commits]);
-    const commitForShowView = useMemo(() => {
-        if (!isShowView) return null;
-        const object = command.find(g => g.optionId === 'object')?.value || 'HEAD';
-        if (object === 'HEAD') return commits.find(c => c.id === head);
-        const branchCommitId = branches[object];
-        if (branchCommitId) return commits.find(c => c.id === branchCommitId);
-        const tagCommitId = tags[object];
-        if (tagCommitId) return commits.find(c => c.id === tagCommitId);
-        return commits.find(c => c.hash.startsWith(object));
-    }, [isShowView, command, commits, head, branches, tags]);
-    
-    const stagedFileCount = useMemo(() => repoFiles.filter(f => f.status === 'staged' || f.status === 'partially-staged').length, [repoFiles]);
-    const modifiedFileCount = useMemo(() => repoFiles.filter(f => f.status === 'modified' || f.status === 'partially-staged' || f.status === 'untracked').length, [repoFiles]);
+    const renderInteractiveView = () => {
+        if (diffTarget) {
+            return <DiffView file={diffTarget.file} diffData={diffTarget.diffData} onClose={handleCloseDiff} />;
+        }
 
-    const renderMainPanel = () => {
-        if (isLogView) return <CommitLogGraph commits={filteredCommits} branches={branches} head={head} showGraph={command.some(g => g.optionId === 'graph')} onCommitSelect={setSelectedCommit} selectedCommitId={selectedCommit?.id || null} onCreateBranch={handleCreateBranchFromCommit} onSwitchBranch={handleSwitchBranch} onDeleteBranch={handleDeleteBranch} />;
-        if (isBranchView) return <BranchView branches={branches} headCommitId={head} onCreate={handleCreateBranch} onSwitch={handleSwitchBranch} onRename={handleRenameBranch} onDelete={handleDeleteBranch}/>;
-        if (isBlameView) return <BlameView lines={DUMMY_BLAME_DATA} showEmail={command.some(g => g.optionId === 'e')} fileName={command.find(g => g.optionId === 'file')?.value || ''} />;
-        if (isConfigView) return <ConfigView localConfig={localConfig} globalConfig={globalConfig} scope={command.some(g => g.optionId === 'global') ? 'global' : 'local'} configKey={command.find(g => g.optionId === 'key')?.value || ''} configValue={command.find(g => g.optionId === 'value')?.value || ''} showList={command.some(g => g.optionId === 'list')} onConfigChange={handleConfigChange} />;
-        if (isStatusView) return <StatusView files={repoFiles} onStage={handleStageFile} onUnstage={handleUnstageFile} onViewDiff={setDiffingFile} onToggleHunk={handleToggleHunk} onDiscard={handleDiscardChanges} />;
-        if (isReflogView) return <ReflogView entries={DUMMY_REFLOG_DATA} />;
-        if (isShortlogView) return <ShortlogView commits={commits} />;
-        if (isGrepView) return <GrepView results={DUMMY_GREP_DATA} pattern={command.find(c => c.optionId === 'pattern')?.value || ''} ignoreCase={command.some(c => c.optionId === 'i')} />;
-        if (isDescribeView) return <DescribeView result={describeResult} />;
-        if (isBisectView) return <BisectView status={bisectStatus} onGood={() => {}} onBad={() => {}} onReset={() => {}} currentCommit={commits.find(c => c.hash === bisectStatus.current)} />;
-        if (isWorktreeView) return <WorktreeView worktrees={worktrees} onAdd={() => {}} onRemove={() => {}} />;
-        if (isShowView) return <ShowView commit={commitForShowView} />;
-        if (isTagView) return <TagView tags={tags} commits={commits} onCreate={handleCreateTag} onDelete={handleDeleteTag} />;
-        if (isRemoteView) return <RemoteView remotes={remotes} onAdd={handleAddRemote} onRemove={handleRemoveRemote} />;
-        if (isStashView) return <StashView stashes={stashes} onApply={handleStashApply} onPop={handleStashPop} onDrop={handleStashDrop} />;
-
-        // Fallback for commands without a dedicated view or the dashboard
-        return (
-            <div className="space-y-6">
-                <RepositoryDashboard
-                    branchName={currentBranchName}
-                    lastCommit={lastCommit}
-                    stagedCount={stagedFileCount}
-                    modifiedCount={modifiedFileCount}
-                    onCommit={handleCommit}
-                    onStageAll={handleStageAll}
-                    onSwitchToStatus={() => setActiveView('status')}
-                />
-                 { currentVerb && (
-                     <div className="bg-paper-white p-6 rounded-panel shadow-panel border border-deep-charcoal/5">
-                        <div className="flex flex-wrap items-start">
-                        {command.map((glyph, index) => (
-                            <GlyphComponent key={glyph.instanceId} prefix={index === 0 ? 'git' : (currentVerb.options.find(o => o.id === glyph.optionId)?.flag || '')} value={index === 0 ? currentVerb.name : glyph.value} placeholder={currentVerb.options.find(o => o.id === glyph.optionId)?.placeholder} option={currentVerb.options.find(o => o.id === glyph.optionId)} onValueChange={(newValue) => handleGlyphValueChange(glyph.instanceId, newValue)} onRemove={() => handleRemoveGlyph(glyph.instanceId)} isVerb={index === 0}/>
-                        ))}
-                        </div>
-                        <div className="mt-4 pt-4 border-t border-deep-charcoal/10">
-                        <h3 className="text-md font-semibold mb-2">Add options for <span className="font-mono text-burnt-gold">{currentVerb.name}</span>:</h3>
-                        <div className="flex flex-wrap gap-2">
-                            {currentVerb.options.map(option => (<button key={option.id} onClick={() => handleAddOption(option)} className="px-3 py-1.5 text-sm rounded-md bg-deep-charcoal/5 hover:bg-burnt-gold/20 transition-colors font-mono" onMouseEnter={() => setHoveredOption(option)} onMouseLeave={() => setHoveredOption(null)}>
-                                {option.flag ? `${option.flag} (${option.description})` : option.description}
-                            </button>))}
-                        </div>
-                        </div>
-                    </div>
-                )}
-            </div>
-        )
+        switch (selectedVerb?.id) {
+            case 'rebase':
+                return <InteractiveRebase commits={rebaseCommits} setCommits={setRebaseCommits} />;
+            case 'log':
+            case 'merge':
+            case 'pull':
+            case 'push':
+            case 'revert':
+            case 'cherry-pick':
+                return <CommitLogGraph
+                    commits={commitHistory}
+                    branches={branches}
+                    remoteBranches={INITIAL_REMOTE_BRANCHES}
+                    head={head}
+                    showGraph={true}
+                    selectedCommitId={selectedCommitId}
+                    onCommitSelect={(commit) => setSelectedCommitId(commit ? commit.id : null)}
+                    onCreateBranch={handleCreateBranch}
+                    onSwitchBranch={handleSwitchBranch}
+                    onDeleteBranch={handleDeleteBranch}
+                />;
+             case 'config':
+                const scope = constructedGlyphs.some(g => g.optionId === 'global') ? 'global' : 'local';
+                const configKey = constructedGlyphs.find(g => g.optionId === 'key')?.value || '';
+                const configValue = constructedGlyphs.find(g => g.optionId === 'value')?.value || '';
+                const showList = constructedGlyphs.some(g => g.optionId === 'list');
+                return <ConfigView localConfig={localConfig} globalConfig={globalConfig} scope={scope} configKey={configKey} configValue={configValue} showList={showList} onConfigChange={handleConfigChange} />;
+            case 'status':
+                return <StatusView files={repoFiles} onStage={handleStage} onUnstage={handleUnstage} onViewDiff={handleViewDiff} onToggleHunk={handleToggleHunkStaging} onDiscard={handleDiscardChanges} />;
+            case 'diff':
+                const diffFile = repoFiles.find(f => f.status === 'modified');
+                if (diffFile) {
+                    return <DiffView file={diffFile} diffData={getDummyDiffForCommit(head)} onClose={handleCloseDiff} />;
+                }
+                return <p className="mt-4 text-stone-gray">No changes to diff.</p>;
+            case 'blame':
+                const fileName = constructedGlyphs.find(g => g.optionId === 'file')?.value || 'src/App.tsx';
+                const showEmail = constructedGlyphs.some(g => g.optionId === 'e');
+                return <BlameView lines={DUMMY_BLAME_DATA} showEmail={showEmail} fileName={fileName} />;
+            case 'branch':
+                return <BranchView branches={branches} headCommitId={head} onCreate={handleCreateBranch} onSwitch={handleSwitchBranch} onRename={handleRenameBranch} onDelete={handleDeleteBranch} />;
+            case 'reflog':
+                return <ReflogView entries={DUMMY_REFLOG_DATA} />;
+            case 'grep':
+                const pattern = constructedGlyphs.find(g => !g.optionId)?.value || 'commit';
+                return <GrepView results={DUMMY_GREP_DATA} pattern={pattern} />;
+            case 'bisect':
+                return <BisectView status={DUMMY_BISECT_STATUS} />;
+            case 'worktree':
+                return <WorktreeView worktrees={DUMMY_WORKTREES} />;
+            case 'remote':
+                return <RemoteView remotes={DUMMY_REMOTES} />;
+            case 'stash':
+                 return <StashView stashes={DUMMY_STASHES} />;
+            default:
+                return null;
+        }
     };
-
-    return (
-        <div className="bg-paper-off-white min-h-screen h-screen overflow-hidden font-sans text-deep-charcoal p-4 sm:p-6 lg:p-8 flex flex-col relative">
-          {/* Notifications */}
-          <div className="absolute top-4 right-4 z-50 space-y-2">
-            {notifications.map(n => (
-              <div key={n.id} className="bg-deep-charcoal text-white text-sm px-4 py-2 rounded-md shadow-lg animate-fade-in-slide-up">
-                {n.message}
-              </div>
-            ))}
-          </div>
-          
-          <header 
-            className="flex-shrink-0 flex justify-between items-center mb-6 p-4 border-b border-deep-charcoal/10 bg-paper-white relative overflow-hidden"
-            style={{ backgroundImage: `url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0MCIgaGVpZ2h0PSI0MCIgdmlld0JveD0iMCAwIDQwIDQwIj48ZyBmaWxsLXJ1bGU9ImV2ZW5vZGQiPjxnIGZpbGw9IiMxRjI5MzciIGZpbGwtb3BhY2l0eT0iMC4wOCI+PHBhdGggZD0iTTAgMzguNTlsMi44My0yLjgzIDEuNDEgMS40MUwxLjQxIDQwSDB2LTEuNDF6TTAgMS40bDIuODMgMi44MyAxLjQxLTEuNDFMMi40MSAwSDB2MS40MXpNMzguNTkgNDBsLTIuODMtMi44MyAxLjQxLTEuNDFMMzAgMzguNTlWNDBoLTEuNDF6TTQwIDEuNDFsLTIuODMgMi44My0xLjQxLTEuNDFMMzguNTkgMEg0MHYxLjQxek0yMCAxOC42bDIuODMtMi44MyAxLjQxIDEuNDFMMjEuNDEgMjBsMi44MyAyLjgzLTEuNDEgMS40MUwyMCAyMS40MWwtMi44MyAyLjgzLTEuNDEtMS40MUwxOC41OSAyMGwtMi44My0yLjgzIDEuNDEtMS40MUwyMCAxOC41OXoiLz48L2c+PC9nPjwvc3ZnPg==')`}}
-          >
-            <GlyphLogo />
-            <div className="flex items-center space-x-4">
-              <span className="text-sm font-medium">Learning Mode</span>
-              <button onClick={() => setIsLearningMode(!isLearningMode)} className={`relative inline-flex flex-shrink-0 h-6 w-11 border-2 border-transparent rounded-full cursor-pointer transition-colors ease-in-out duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-burnt-gold ${isLearningMode ? 'bg-burnt-gold' : 'bg-deep-charcoal/20'}`}>
-                <span className={`inline-block h-5 w-5 rounded-full bg-white shadow transform ring-0 transition ease-in-out duration-200 ${isLearningMode ? 'translate-x-5' : 'translate-x-0'}`} />
-              </button>
-            </div>
-          </header>
-
-          <main className="flex-grow grid grid-cols-12 gap-8 min-h-0">
-            {/* Column 1: Verbs (Vertical Carousel) */}
-            <div className="col-span-2 flex flex-col min-h-0">
-                <button onClick={() => setActiveView('dashboard')} className={`w-full flex items-center space-x-3 px-3 py-2.5 rounded-md text-left transition-colors mb-4 ${activeView === 'dashboard' ? 'bg-burnt-gold/10 font-semibold' : 'hover:bg-deep-charcoal/5'}`}>
-                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" /></svg>
-                    <span className="font-mono text-sm">Dashboard</span>
-                </button>
-              <div className="relative mb-4">
-                <input type="text" placeholder="Search commands..." value={commandSearch} onChange={(e) => setCommandSearch(e.target.value)} className="w-full pl-9 pr-3 py-2 text-sm bg-paper-white border border-deep-charcoal/10 rounded-md focus:outline-none focus:ring-2 focus:ring-burnt-gold/50" />
-                <svg className="w-4 h-4 absolute top-1/2 left-3 -translate-y-1/2 text-stone-gray" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
-              </div>
-              <nav className="flex-grow overflow-y-auto space-y-1 pr-2">
-                {filteredCommands.map(verb => (
-                  <button key={verb.id} onClick={() => handleVerbSelect(verb)} className={`w-full flex items-center space-x-3 px-3 py-2.5 rounded-md text-left transition-colors relative ${activeView === verb.id ? 'bg-burnt-gold/10 text-deep-charcoal font-semibold' : 'hover:bg-deep-charcoal/5'}`}>
-                    {activeView === verb.id && <div className="absolute left-0 top-2 bottom-2 w-1 bg-burnt-gold rounded-r-full"></div>}
-                    <verb.icon className={`w-5 h-5 flex-shrink-0 ${activeView === verb.id ? 'text-burnt-gold' : 'text-stone-gray'}`} />
-                    <span className="font-mono text-sm">{verb.name}</span>
-                  </button>
-                ))}
-              </nav>
-            </div>
-            
-            {/* Column 2: Main Canvas */}
-            <div className="col-span-6 overflow-y-auto p-2">
-              {renderMainPanel()}
-              {generatedCommand && (
-                <div className="mt-4 p-4 bg-deep-charcoal/95 rounded-lg flex items-center justify-between font-mono text-paper-off-white text-sm sticky bottom-0 z-10 shadow-lg">
-                  <code className="break-all">{generatedCommand}</code>
-                  <div className="flex items-center space-x-3 ml-4">
-                      <button onClick={handleCopy} className="p-1.5 rounded-md hover:bg-white/20 transition-colors"><CopyIcon copied={copied} /></button>
-                      <button onClick={handleClearCommand} className="p-1.5 rounded-md hover:bg-white/20 transition-colors"><TrashIcon /></button>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Column 3: Scribe & History */}
-            <div className="col-span-4 overflow-y-auto p-2">
-              <div className="space-y-6">
-                {isLearningMode && (
-                    <div className="p-6 bg-burnt-gold/5 border border-burnt-gold/10 rounded-panel animate-fade-in-slide-up">
-                        <div className="flex items-center space-x-3 mb-4"><LearningIcon /><h2 className="text-xl font-bold text-deep-charcoal">Live Scribe</h2></div>
-                        {hoveredOption ? (<>
-                                <p className="font-semibold text-lg mb-2 font-mono">{hoveredOption.flag ? `${hoveredOption.flag} (${hoveredOption.description})` : hoveredOption.description}</p>
-                                <p className="text-deep-charcoal/80 mb-4">{hoveredOption.longDescription}</p>
-                             </>) : currentVerb ? (<>
-                                <p className="font-semibold text-lg mb-2">{currentVerb.name}</p>
-                                <p className="text-deep-charcoal/80 mb-4">{currentVerb.longDescription}</p>
-                                {SUGGESTED_COMMANDS[currentVerb.id] && (<div>
-                                    <h4 className="font-bold mb-2">Related Commands:</h4>
-                                    <ul className="space-y-2">{SUGGESTED_COMMANDS[currentVerb.id].map(s => (<li key={s.command} className="flex items-center text-sm"><code className="font-mono bg-deep-charcoal/10 px-2 py-0.5 rounded mr-2">{s.command}</code><span>- {s.description}</span></li>))}</ul>
-                                </div>)}
-                            </>) : (<p className="text-stone-gray">Select a command from the list on the left to learn about its purpose, usage, and options.</p>)}
-                    </div>
-                )}
-                {repoFiles.some(f => f.status === 'modified' || f.status === 'untracked') && <button onClick={handleStashPush} className="w-full bg-deep-charcoal text-white font-bold py-2 rounded-lg shadow-sm hover:bg-deep-charcoal/90 transition-colors">Stash Changes</button>}
-
-                <div>
-                  <h3 className="text-lg font-semibold mb-2">History</h3>
-                  {history.length > 0 ? (
-                    <div className="bg-paper-white py-3 px-2 rounded-panel shadow-panel border border-deep-charcoal/5 space-y-1">
-                      {history.map((cmd, i) => (
-                        <div key={`${cmd}-${i}`} onMouseEnter={() => setHoveredHistoryIndex(i)} onMouseLeave={() => setHoveredHistoryIndex(null)} className="w-full flex justify-between items-center text-left font-mono text-sm p-2 rounded-md hover:bg-deep-charcoal/5 transition-colors">
-                          <span className="truncate pr-4 cursor-pointer" onClick={() => handleHistorySelect(cmd)}>{cmd}</span>
-                           {hoveredHistoryIndex === i && (<div className="flex items-center space-x-1 flex-shrink-0 animate-pop-in">
-                               <button onClick={() => handleHistorySelect(cmd)} className="p-1.5 rounded-md hover:bg-burnt-gold/20 text-stone-gray hover:text-burnt-gold" title="Re-use command"><ReuseIcon /></button>
-                               <button onClick={() => handleDeleteHistoryItem(i)} className="p-1.5 rounded-md hover:bg-red-500/10 text-stone-gray hover:text-red-600" title="Delete from history"><TrashIcon className="w-4 h-4" /></button>
-                           </div>)}
-                        </div>
-                      ))}
-                    </div>
-                  ) : (<div className="bg-paper-white py-5 px-4 rounded-panel shadow-panel border border-deep-charcoal/5 text-center"><p className="text-sm text-stone-gray">Commands you copy will appear here for easy reuse.</p></div>)}
-                </div>
-              </div>
-            </div>
-          </main>
-        </div>
-      );
-}
-
-
-const RepositoryDashboard: React.FC<{
-    branchName: string;
-    lastCommit: Commit;
-    stagedCount: number;
-    modifiedCount: number;
-    onCommit: (message: string) => void;
-    onStageAll: () => void;
-    onSwitchToStatus: () => void;
-}> = ({ branchName, lastCommit, stagedCount, modifiedCount, onCommit, onStageAll, onSwitchToStatus }) => {
     
-    return (
-        <div className="bg-paper-white p-6 rounded-panel shadow-panel border border-deep-charcoal/5 space-y-6">
-            <div>
-                <h2 className="text-2xl font-bold text-deep-charcoal">Repository Dashboard</h2>
-                <div className="mt-2 text-sm">
-                    <p>Current Branch: <span className="font-mono text-burnt-gold">{branchName}</span></p>
-                    <p>Last Commit: <span className="font-mono text-deep-charcoal truncate">{lastCommit.message}</span> by <span className="font-semibold">{lastCommit.author}</span></p>
+    const CommandBuilder = () => (
+        <div className="flex-1 flex flex-col p-4 md:p-8 overflow-y-auto">
+            <header className="flex justify-between items-center mb-6">
+                <GlyphLogo />
+                <button onClick={() => setSidebarOpen(true)} className="md:hidden">
+                    <MenuIcon />
+                </button>
+            </header>
+
+            <div id="glyph-constructor" className="bg-paper-off-white/80 border border-deep-charcoal/10 p-4 rounded-panel shadow-panel min-h-[120px]">
+                <div className="flex flex-wrap items-start">
+                    {constructedGlyphs.length > 0 && constructedGlyphs.map((glyph, index) => {
+                        const option = selectedVerb?.options.find(o => o.id === glyph.optionId);
+                        return (
+                            <GlyphComponent
+                                key={glyph.instanceId}
+                                prefix={index === 0 ? 'git' : (option?.flag || '')}
+                                value={glyph.value}
+                                placeholder={option?.placeholder || '...'}
+                                option={option}
+                                onValueChange={(newValue) => handleGlyphChange(glyph.instanceId, newValue)}
+                                onRemove={() => handleRemoveGlyph(glyph.instanceId)}
+                                isVerb={index === 0}
+                            />
+                        );
+                    })}
                 </div>
             </div>
 
-            {stagedCount > 0 && <CommitPanel stagedFiles={stagedCount} onCommit={onCommit} branchName={branchName} />}
-
-            {(modifiedCount > 0 || stagedCount > 0) ? (
-                 <div className="border-t border-deep-charcoal/10 pt-4 space-y-3">
-                    <h3 className="font-semibold">Working Directory Status</h3>
-                    <div className="flex items-center justify-between p-3 bg-deep-charcoal/5 rounded-md">
-                        <div>
-                             <p className="font-bold">{stagedCount} staged file(s)</p>
-                             <p className="font-bold">{modifiedCount} unstaged & untracked file(s)</p>
-                        </div>
-                        <div className="flex items-center space-x-2">
-                             {modifiedCount > 0 && <button onClick={onStageAll} className="px-4 py-2 text-sm font-bold bg-olive-green/20 text-olive-green rounded-md hover:bg-olive-green/30 transition-colors">Stage All</button>}
-                             <button onClick={onSwitchToStatus} className="px-4 py-2 text-sm font-bold bg-deep-charcoal/10 text-deep-charcoal rounded-md hover:bg-deep-charcoal/20 transition-colors">View Details</button>
-                        </div>
-                    </div>
-                </div>
-            ) : (
-                <div className="text-center py-6 border-t border-deep-charcoal/10">
-                    <p className="text-olive-green font-semibold">Your working directory is clean.</p>
-                    <p className="text-sm text-stone-gray mt-1">Nothing to commit.</p>
+            {selectedVerb && (
+                <div className="mt-4 flex flex-wrap items-center">
+                    {selectedVerb.options.map(option => (
+                        <button key={option.id} onClick={() => handleAddOption(option)} className="mr-2 mb-2 text-sm font-mono bg-paper-white border border-deep-charcoal/20 px-3 py-1.5 rounded-md hover:border-burnt-gold/50 hover:text-burnt-gold transition-colors">
+                            + {option.flag || option.description.split('.')[0]}
+                        </button>
+                    ))}
                 </div>
             )}
+            
+            {commandString && (
+                <div className="mt-6 font-mono text-sm bg-deep-charcoal text-paper-white p-4 rounded-md flex items-center justify-between">
+                    <pre className="overflow-x-auto"><code>{commandString}</code></pre>
+                    <div className="flex items-center space-x-4 pl-4">
+                        <button onClick={handleCopyCommand}><CopyIcon copied={copied} /></button>
+                        <button onClick={handleClearCommand}><TrashIcon /></button>
+                    </div>
+                </div>
+            )}
+            
+            <div className="mt-8 flex-grow">
+                {liveExplanation && (
+                    <div className="border-l-4 border-burnt-gold/50 pl-6 py-2">
+                        <h2 className="text-lg font-bold text-deep-charcoal flex items-center mb-2"><LearningIcon /> <span className="ml-2">Live Scribe</span></h2>
+                        <div className="prose prose-sm text-stone-gray max-w-none">
+                            {isLoadingExplanation ? <p>Thinking...</p> : <p dangerouslySetInnerHTML={{ __html: liveExplanation.replace(/\n/g, '<br />') }} />}
+                        </div>
+                    </div>
+                )}
+                 {renderInteractiveView()}
+            </div>
         </div>
-    )
-}
+    );
+    
+    const CommandSidebar = () => (
+        <aside className={`fixed md:relative inset-0 z-50 md:z-auto bg-paper-white md:bg-transparent transition-transform transform ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0 w-full md:w-80 border-r border-deep-charcoal/10 flex-shrink-0 flex flex-col`}>
+             <div className="p-4 border-b border-deep-charcoal/10 flex justify-between items-center md:hidden">
+                <h2 className="font-bold text-lg">Commands</h2>
+                <button onClick={() => setSidebarOpen(false)}><CloseIcon /></button>
+            </div>
+            <div className="overflow-y-auto p-4 flex-grow">
+                <h2 className="font-bold text-lg text-deep-charcoal mb-4 hidden md:block">Commands</h2>
+                <ul>
+                    {GIT_COMMANDS.map(verb => (
+                        <li key={verb.id}>
+                            <button
+                                onClick={() => handleSelectVerb(verb)}
+                                className={`w-full text-left p-3 rounded-md flex items-center space-x-4 transition-colors ${selectedVerb?.id === verb.id ? 'bg-burnt-gold/10' : 'hover:bg-deep-charcoal/5'}`}
+                            >
+                                <verb.icon className={`w-6 h-6 flex-shrink-0 ${selectedVerb?.id === verb.id ? 'text-burnt-gold' : 'text-deep-charcoal/80'}`} />
+                                <div>
+                                    <p className={`font-bold ${selectedVerb?.id === verb.id ? 'text-burnt-gold' : 'text-deep-charcoal'}`}>{verb.name}</p>
+                                    <p className="text-xs text-stone-gray">{verb.description}</p>
+                                </div>
+                            </button>
+                        </li>
+                    ))}
+                </ul>
+            </div>
+        </aside>
+    );
 
-const CommitPanel: React.FC<{stagedFiles: number, onCommit: (message: string) => void, branchName: string}> = ({stagedFiles, onCommit, branchName}) => {
-    const [message, setMessage] = useState('');
-    const canCommit = stagedFiles > 0 && message.trim() !== '';
+    const CommandHistory = () => (
+        <aside className="w-96 bg-paper-off-white/80 border-l border-deep-charcoal/10 p-6 flex-shrink-0 flex-col hidden lg:flex">
+            <div className="flex-grow">
+                <h2 className="font-bold text-lg text-deep-charcoal mb-4">History</h2>
+                {commandHistory.length > 0 ? (
+                    <ul className="space-y-3">
+                        {commandHistory.map((glyphs, i) => (
+                            <li key={i} className="group font-mono text-xs bg-paper-white p-2 rounded-md border border-deep-charcoal/10 hover:border-burnt-gold/50 transition-colors">
+                                <p className="truncate">{`git ${glyphs.map(g => g.value).join(' ')}`}</p>
+                                <button onClick={() => handleReuseCommand(glyphs)} className="mt-1 text-burnt-gold font-bold opacity-0 group-hover:opacity-100 transition-opacity flex items-center space-x-1">
+                                    <ReuseIcon /> <span>Reuse</span>
+                                </button>
+                            </li>
+                        ))}
+                    </ul>
+                ) : (
+                    <p className="text-sm text-stone-gray">Your past commands will appear here.</p>
+                )}
+            </div>
 
-    const handleSubmit = () => {
-        if(canCommit) {
-            onCommit(message);
-            setMessage('');
-        }
-    }
+            <SagePanel />
+        </aside>
+    );
+
+    const SagePanel = () => (
+         <div id="sage-panel" className="border-t border-deep-charcoal/10 pt-6 mt-6">
+            <h2 className="font-bold text-lg text-deep-charcoal flex items-center mb-4"><SageIcon /> <span className="ml-2">Git Sage</span></h2>
+            <div className="bg-paper-white p-2 border border-deep-charcoal/10 rounded-lg h-64 flex flex-col">
+                <div className="flex-grow overflow-y-auto text-sm space-y-3 p-2">
+                    {sageMessages.map((msg, i) => (
+                        <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                            <p className={`max-w-[80%] p-2 rounded-lg ${msg.role === 'user' ? 'bg-burnt-gold/20 text-deep-charcoal' : 'bg-deep-charcoal/5 text-stone-gray'}`}>
+                                {msg.content}
+                            </p>
+                        </div>
+                    ))}
+                    {isSageLoading && <p className="text-stone-gray text-center animate-pulse">Sage is thinking...</p>}
+                    <div ref={sageChatEndRef} />
+                </div>
+                <form onSubmit={handleSageSubmit} className="flex items-center p-1 border-t border-deep-charcoal/10">
+                    <input
+                        type="text"
+                        value={sageInput}
+                        onChange={(e) => setSageInput(e.target.value)}
+                        placeholder="Ask about your command..."
+                        className="flex-grow bg-transparent focus:outline-none text-sm p-2"
+                        disabled={!ai || isSageLoading}
+                    />
+                    <button type="submit" disabled={!ai || isSageLoading || !sageInput.trim()} className="text-burnt-gold font-bold disabled:text-stone-gray/50 transition-colors">Send</button>
+                </form>
+            </div>
+            {!ai && <p className="text-xs text-stone-gray mt-2 text-center">API_KEY not configured. Sage is disabled.</p>}
+        </div>
+    );
     
     return (
-        <div className="bg-burnt-gold/5 p-4 rounded-lg border border-burnt-gold/20 animate-fade-in-slide-up">
-            <h3 className="font-bold text-deep-charcoal mb-2">Commit Staged Changes</h3>
-            <textarea
-                value={message}
-                onChange={(e) => setMessage(e.target.value)}
-                placeholder="Enter your commit message..."
-                className="w-full h-24 p-2 text-sm font-mono bg-paper-white border border-deep-charcoal/10 rounded-md focus:outline-none focus:ring-2 focus:ring-burnt-gold/50"
-            />
-            <button
-                onClick={handleSubmit}
-                disabled={!canCommit}
-                className="w-full mt-2 bg-deep-charcoal text-paper-white font-bold py-2 rounded-md transition-colors disabled:bg-deep-charcoal/40 disabled:cursor-not-allowed hover:bg-deep-charcoal/90"
-            >
-                Commit to {branchName}
-            </button>
+        <div className="flex h-screen bg-paper-white">
+            <CommandSidebar />
+            <main className="flex-1 flex min-w-0">
+                <CommandBuilder />
+                <CommandHistory />
+            </main>
         </div>
-    )
-}
+    );
+};
+
+export default App;
