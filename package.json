@@ -1,12 +1,13 @@
 {
-  "name": "glyph:-the-git-command-constructor",
+  "name": "glyph-git-command-constructor",
   "private": true,
   "version": "0.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "lint": "tsc --noEmit"
   },
   "dependencies": {
     "react": "^19.1.1",

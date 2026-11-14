@@ -1,20 +1,26 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# Glyph: the Git command constructor
 
-# Run and deploy your AI Studio app
+Build Git commands visually, one glyph at a time, and see what each flag does as you add it. Includes visual walkthroughs of diffs, blame, branches, rebase and the commit graph.
 
-This contains everything you need to run your app locally.
+## Run locally
 
-View your app in AI Studio: https://ai.studio/apps/drive/1WILapFb5xnpETxYAJ9gSTd3SR9UlS4UN
+Requires Node.js 20 or later.
 
-## Run Locally
+```bash
+npm install
+npm run dev        # http://localhost:3000
+```
 
-**Prerequisites:**  Node.js
+## Optional AI explanations ("Sage")
 
+Glyph works without any API key: each command shows its built-in description. To get AI explanations and the Sage chat, paste a Gemini API key into the field in the Sage panel.
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+The key is kept only in that browser tab (memory and `sessionStorage`) and sent only to Google's Gemini API. It is never built into the bundle, so a deployed copy of Glyph carries no secret. Use **Forget key** to remove it.
+
+## Checks
+
+```bash
+npm run lint       # TypeScript type check
+npm run build
+node dev/check-app.cjs   # browser check, needs Playwright; run after build
+```
