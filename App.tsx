@@ -16,10 +16,23 @@ import { BranchView } from './components/BranchView';
 
 
 const MAX_HISTORY = 10;
+// The Gemini key is supplied by the visitor at runtime and kept in this tab's
+// memory (and sessionStorage, so a reload keeps it). It is never compiled into
+// the bundle, so a deployed build carries no secret.
+const KEY_STORAGE = 'glyph.geminiKey';
 let ai: GoogleGenAI | null = null;
-if (process.env.API_KEY) {
-    ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-}
+const setGeminiKey = (key: string) => {
+    const trimmed = key.trim();
+    ai = trimmed ? new GoogleGenAI({ apiKey: trimmed }) : null;
+    try {
+        if (trimmed) sessionStorage.setItem(KEY_STORAGE, trimmed);
+        else sessionStorage.removeItem(KEY_STORAGE);
+    } catch { /* storage unavailable: keep the key in memory only */ }
+};
+try {
+    const saved = sessionStorage.getItem(KEY_STORAGE);
+    if (saved) ai = new GoogleGenAI({ apiKey: saved });
+} catch { /* storage unavailable */ }
 
 
 // --- Dummy Data ---
@@ -466,6 +479,8 @@ const App: React.FC = () => {
     const [selectedVerb, setSelectedVerb] = useState<GitVerb | null>(null);
 
     // UI State
+    const [hasAiKey, setHasAiKey] = useState(Boolean(ai)); // re-render when the key changes
+    void hasAiKey;
     const [liveExplanation, setLiveExplanation] = useState('');
     const [isLoadingExplanation, setIsLoadingExplanation] = useState(false);
     const [copied, setCopied] = useState(false);
@@ -577,8 +592,10 @@ const App: React.FC = () => {
         setSelectedVerb(verb);
         setSidebarOpen(false);
         setDiffTarget(null);
-        handleGlyphChange(`verb-${Date.now()}`, verb.name); // Initial explanation
-    }, [handleGlyphChange]);
+        // Explain the newly selected verb directly: handleGlyphChange would read
+        // the previous selectedVerb from its closure (null on the first click).
+        getExplanation(`git ${verb.name}`, verb);
+    }, [getExplanation]);
 
     const handleAddOption = useCallback((option: GitOption) => {
         const newGlyph: ConstructedGlyph = {
@@ -919,7 +936,7 @@ const App: React.FC = () => {
                             <div className="border-l-4 border-burnt-gold/50 pl-6 py-2">
                                 <h2 className="text-lg font-bold text-deep-charcoal flex items-center mb-2"><LearningIcon /> <span className="ml-2">Live Scribe</span></h2>
                                 <div className="prose prose-sm text-stone-gray max-w-none">
-                                    {isLoadingExplanation ? <p>Thinking...</p> : <p dangerouslySetInnerHTML={{ __html: liveExplanation.replace(/\n/g, '<br />') }} />}
+                                    {isLoadingExplanation ? <p>Thinking...</p> : <p className="whitespace-pre-wrap">{liveExplanation}</p>}
                                 </div>
                             </div>
                         )}
@@ -980,7 +997,7 @@ const App: React.FC = () => {
                 )}
             </div>
 
-            <SagePanel />
+            {SagePanel()}
         </aside>
     );
 
@@ -1011,7 +1028,32 @@ const App: React.FC = () => {
                     <button type="submit" disabled={!ai || isSageLoading || !sageInput.trim()} className="text-burnt-gold font-bold disabled:text-stone-gray/50 transition-colors">Send</button>
                 </form>
             </div>
-            {!ai && <p className="text-xs text-stone-gray mt-2 text-center">API_KEY not configured. Sage is disabled.</p>}
+            {!ai ? (
+                <form
+                    className="mt-2 flex items-center gap-2 text-xs"
+                    onSubmit={(e) => {
+                        e.preventDefault();
+                        const key = String(new FormData(e.currentTarget).get('geminiKey') || '');
+                        setGeminiKey(key);
+                        setHasAiKey(Boolean(ai));
+                    }}
+                >
+                    <input
+                        name="geminiKey"
+                        type="password"
+                        autoComplete="off"
+                        aria-label="Gemini API key"
+                        placeholder="Gemini API key to enable Sage"
+                        className="flex-grow bg-transparent border border-deep-charcoal/10 rounded p-2 focus:outline-none"
+                    />
+                    <button type="submit" className="text-burnt-gold font-bold">Use key</button>
+                </form>
+            ) : (
+                <p className="text-xs text-stone-gray mt-2 text-center">
+                    Using your Gemini key for this tab only.{' '}
+                    <button type="button" className="underline" onClick={() => { setGeminiKey(''); setHasAiKey(false); }}>Forget key</button>
+                </p>
+            )}
         </div>
     );
     
@@ -1020,7 +1062,7 @@ const App: React.FC = () => {
             <CommandSidebar />
             <main className="flex-1 flex min-w-0">
                 <CommandBuilder />
-                <CommandHistory />
+                {CommandHistory()}
             </main>
         </div>
     );
